@@ -1,43 +1,26 @@
 import { X } from "lucide-react";
+import type { WorkspacePanelActions, WorkspacePanelModel } from "../app/types";
 import { TerminalPanel } from "./TerminalPanel";
-
-interface TerminalTab {
-  key: string;
-  label: string;
-  sessionId: string | null;
-}
 
 interface WorkspacePanelProps {
   mainColumnRef: React.RefObject<HTMLElement | null>;
   webviewPanelRef: React.RefObject<HTMLElement | null>;
-  isServerRunning: boolean;
-  previewSplitPercent: number;
-  webTargetText: string;
-  serverError: string | null;
-  terminalTabs: TerminalTab[];
-  activeTerminalTabKey: string | null;
-  activeProjectId: string | null;
-  activeTerminalId: string | null;
-  onSelectTerminalTab: (tabKey: string) => void;
-  onCloseSessionTab: (sessionId: string) => void;
-  onSplitterMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
+  model: WorkspacePanelModel;
+  actions: WorkspacePanelActions;
 }
 
-export function WorkspacePanel({
-  mainColumnRef,
-  webviewPanelRef,
-  isServerRunning,
-  previewSplitPercent,
-  webTargetText,
-  serverError,
-  terminalTabs,
-  activeTerminalTabKey,
-  activeProjectId,
-  activeTerminalId,
-  onSelectTerminalTab,
-  onCloseSessionTab,
-  onSplitterMouseDown
-}: WorkspacePanelProps): JSX.Element {
+export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions }: WorkspacePanelProps): JSX.Element {
+  const {
+    isServerRunning,
+    previewSplitPercent,
+    webTargetText,
+    serverError,
+    terminalTabs,
+    activeTerminalTabKey,
+    activeProjectId,
+    activeTerminalId
+  } = model;
+
   return (
     <main
       ref={mainColumnRef}
@@ -55,7 +38,7 @@ export function WorkspacePanel({
           </div>
         </section>
       ) : null}
-      {isServerRunning ? <div className="splitter" onMouseDown={onSplitterMouseDown} /> : null}
+      {isServerRunning ? <div className="splitter" onMouseDown={actions.onSplitterMouseDown} /> : null}
       <section className={isServerRunning ? "workspace-panel with-preview" : "workspace-panel full-height"}>
         {serverError ? <div className="panel-error">{serverError}</div> : null}
         <div className="terminal-tabbar">
@@ -63,7 +46,7 @@ export function WorkspacePanel({
             <button
               key={tab.key}
               className={activeTerminalTabKey === tab.key ? "terminal-tab active" : "terminal-tab"}
-              onClick={() => onSelectTerminalTab(tab.key)}
+              onClick={() => actions.onSelectTerminalTab(tab.key)}
             >
               <span>{tab.label}</span>
               {tab.sessionId ? (
@@ -75,7 +58,7 @@ export function WorkspacePanel({
                     if (!activeProjectId) {
                       return;
                     }
-                    onCloseSessionTab(tab.sessionId as string);
+                    actions.onCloseSessionTab(tab.sessionId as string);
                   }}
                 >
                   <X size={11} />
