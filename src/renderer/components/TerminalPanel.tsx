@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
@@ -7,12 +7,39 @@ interface TerminalPanelProps {
   activeTerminalId: string | null;
 }
 
+const MAX_BUFFER_CHARS = 200_000;
+
 export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: TerminalPanelProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const mountedRef = useRef(false);
   const activeTerminalIdRef = useRef<string | null>(activeTerminalId);
+  const terminalBuffersRef = useRef<Record<string, string>>({});
+
+  const appendToBuffer = useCallback((terminalId: string, chunk: string): void => {
+    const current = terminalBuffersRef.current[terminalId] ?? "";
+    const next = `${current}${chunk}`;
+    terminalBuffersRef.current[terminalId] =
+      next.length > MAX_BUFFER_CHARS ? next.slice(next.length - MAX_BUFFER_CHARS) : next;
+  }, []);
+
+  const renderActiveBuffer = useCallback((): void => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    terminal.reset();
+    const terminalId = activeTerminalIdRef.current;
+    if (!terminalId) {
+      terminal.writeln("Select a terminal tab to begin.");
+      return;
+    }
+    const buffered = terminalBuffersRef.current[terminalId] ?? "";
+    if (buffered) {
+      terminal.write(buffered);
+    }
+  }, []);
 
   const copyTerminalSelection = async (): Promise<void> => {
     const text = terminalRef.current?.getSelection() ?? "";
@@ -62,6 +89,7 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
 
   useEffect(() => {
     activeTerminalIdRef.current = activeTerminalId;
+    renderActiveBuffer();
     const fitAddon = fitAddonRef.current;
     if (!fitAddon) {
       return;
@@ -78,7 +106,7 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
         rows: dims.rows
       });
     }
-  }, [activeTerminalId]);
+  }, [activeTerminalId, renderActiveBuffer]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -98,10 +126,9 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
     terminal.loadAddon(fitAddon);
 
     terminal.open(containerRef.current);
-    terminal.writeln("ShipDeck terminal ready.");
-    terminal.writeln("Type in this terminal to interact with active processes.");
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    renderActiveBuffer();
 
     const applyFit = (): void => {
       if (!mountedRef.current || !containerRef.current?.isConnected || !terminalRef.current) {
@@ -161,6 +188,7 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
     });
 
     const unsubscribeData = window.api.terminals.onData(({ terminalId, data }) => {
+      appendToBuffer(terminalId, data);
       if (activeTerminalIdRef.current && terminalId === activeTerminalIdRef.current) {
         const current = terminalRef.current;
         if (mountedRef.current && current === terminal) {
@@ -170,13 +198,15 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
     });
 
     const unsubscribeExit = window.api.terminals.onExit(({ terminalId, code }) => {
+      const message = `\r\n[process exited with code ${code}]`;
+      appendToBuffer(terminalId, message);
       if (
         mountedRef.current &&
         terminalRef.current === terminal &&
         activeTerminalIdRef.current &&
         terminalId === activeTerminalIdRef.current
       ) {
-        terminal.writeln(`\r\n[process exited with code ${code}]`);
+        terminal.write(message);
       }
     });
 
@@ -191,7 +221,7 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
       terminalRef.current = null;
       terminal.dispose();
     };
-  }, []);
+  }, [appendToBuffer, renderActiveBuffer]);
 
   return (
     <div className="terminal-panel">
