@@ -120,6 +120,8 @@ function createMainWindow(): BrowserWindow {
   });
 
   win.setMenuBarVisibility(false);
+  win.removeMenu();
+  win.webContents.setIgnoreMenuShortcuts(true);
   return win;
 }
 
@@ -151,6 +153,23 @@ function registerIpc(win: BrowserWindow): void {
     void web.loadTarget(`http://localhost:${targetPort}/`).catch(() => {
       // Ignore navigation errors; renderer still receives event updates.
     });
+  });
+
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") {
+      return;
+    }
+    const key = input.key.toLowerCase();
+    const isRefreshCombo = (input.control || input.meta) && key === "r";
+    const isF5 = key === "f5";
+    if (isRefreshCombo) {
+      event.preventDefault();
+      web.reload();
+      return;
+    }
+    if (isF5) {
+      event.preventDefault();
+    }
   });
 
   win.on("resize", () => {

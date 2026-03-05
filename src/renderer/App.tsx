@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectSidebar } from "./components/ProjectSidebar";
 import { WindowBar } from "./components/WindowBar";
 import { WorkspacePanel } from "./components/WorkspacePanel";
@@ -252,6 +252,37 @@ export function App(): JSX.Element {
     onCloseSessionTab,
     onSplitterMouseDown
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const isRefreshShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r";
+      if (!isRefreshShortcut) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.closest(".terminal-host, .xterm") || target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) {
+          return;
+        }
+      }
+
+      if (!activeWorkspace.isServerRunning || !webTargetText.startsWith("http://localhost:")) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void window.api.webView.loadTarget({ url: webTargetText }).catch(() => {
+        // Ignore transient navigation errors; next server event will recover.
+      });
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeWorkspace.isServerRunning, webTargetText]);
 
   return (
     <div className="window-root">

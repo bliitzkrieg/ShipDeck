@@ -68,7 +68,33 @@ export class WebViewManager {
     await view.webContents.loadURL(url);
   }
 
+  reload(): void {
+    if (!this.view) {
+      return;
+    }
+    this.view.webContents.reload();
+  }
+
   private attachGuards(target: WebContentsView): void {
+    target.webContents.setIgnoreMenuShortcuts(true);
+
+    target.webContents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown") {
+        return;
+      }
+      const key = input.key.toLowerCase();
+      const isRefreshCombo = (input.control || input.meta) && key === "r";
+      const isF5 = key === "f5";
+      if (isRefreshCombo) {
+        event.preventDefault();
+        target.webContents.reload();
+        return;
+      }
+      if (isF5) {
+        event.preventDefault();
+      }
+    });
+
     target.webContents.setWindowOpenHandler(({ url }) => {
       if (!isAllowedLoopbackUrl(url)) {
         return { action: "deny" };
