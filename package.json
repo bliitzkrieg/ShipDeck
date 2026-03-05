@@ -1,0 +1,68 @@
+{
+  "name": "project-cockpit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project cockpit desktop app",
+  "main": "dist/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "clean": "rimraf dist",
+    "dev:renderer": "vite --config vite.renderer.config.ts --port 5173",
+    "dev:main": "tsup src/main/index.ts --format cjs --platform node --target node20 --out-dir dist/main --external electron --watch",
+    "dev:preload": "tsup src/preload/index.ts --format cjs --platform node --target node20 --out-dir dist/preload --external electron --watch",
+    "dev:electron": "wait-on tcp:5173 dist/main/index.js dist/preload/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "dev": "concurrently -k \"pnpm dev:renderer\" \"pnpm dev:main\" \"pnpm dev:preload\" \"pnpm dev:electron\"",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "build:main": "tsup src/main/index.ts --format cjs --platform node --target node20 --out-dir dist/main --external electron",
+    "build:preload": "tsup src/preload/index.ts --format cjs --platform node --target node20 --out-dir dist/preload --external electron",
+    "build": "pnpm clean && pnpm build:renderer && pnpm build:main && pnpm build:preload",
+    "rebuild:native": "electron-rebuild -f -o better-sqlite3",
+    "rebuild:pty": "electron-rebuild -f -o node-pty",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "better-sqlite3": "^11.8.1",
+    "lucide-react": "^0.511.0",
+    "node-pty": "^1.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^35.0.0",
+    "eslint": "^9.22.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.1",
+    "vitest": "^3.0.8",
+    "wait-on": "^8.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild",
+      "node-pty"
+    ]
+  }
+}

@@ -1,0 +1,209 @@
+import { memo, useEffect, useRef } from "react";
+import { Terminal } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
+import "xterm/css/xterm.css";
+
+interface TerminalPanelProps {
+  activeTerminalId: string | null;
+}
+
+export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: TerminalPanelProps): JSX.Element {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const mountedRef = useRef(false);
+  const activeTerminalIdRef = useRef<string | null>(activeTerminalId);
+
+  const copyTerminalSelection = async (): Promise<void> => {
+    const text = terminalRef.current?.getSelection() ?? "";
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = text;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
+  };
+
+  const pasteFromClipboard = async (): Promise<void> => {
+    const terminalId = activeTerminalIdRef.current;
+    if (!terminalId) {
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.length > 0) {
+        window.api.terminals.writeInput({ terminalId, data: text });
+      }
+    } catch {
+      // Ignore clipboard failures in restricted environments.
+    }
+  };
+
+  const getSafeDimensions = (fitAddon: FitAddon): { cols: number; rows: number } | null => {
+    if (!mountedRef.current || !containerRef.current?.isConnected || !terminalRef.current) {
+      return null;
+    }
+    try {
+      return fitAddon.proposeDimensions() ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    activeTerminalIdRef.current = activeTerminalId;
+    const fitAddon = fitAddonRef.current;
+    if (!fitAddon) {
+      return;
+    }
+    const dims = getSafeDimensions(fitAddon);
+    if (dims && activeTerminalId) {
+      const terminal = terminalRef.current;
+      if (terminal && (terminal.cols !== dims.cols || terminal.rows !== dims.rows)) {
+        terminal.resize(dims.cols, dims.rows);
+      }
+      void window.api.terminals.resize({
+        terminalId: activeTerminalId,
+        cols: dims.cols,
+        rows: dims.rows
+      });
+    }
+  }, [activeTerminalId]);
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      return;
+    }
+    mountedRef.current = true;
+
+    const terminal = new Terminal({
+      convertEol: true,
+      fontFamily: "Consolas, Menlo, Monaco, monospace",
+      theme: {
+        background: "#15181b",
+        foreground: "#d4d9e6"
+      }
+    });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+
+    terminal.open(containerRef.current);
+    terminal.writeln("ShipDeck terminal ready.");
+    terminal.writeln("Type in this terminal to interact with active processes.");
+    terminalRef.current = terminal;
+    fitAddonRef.current = fitAddon;
+
+    const applyFit = (): void => {
+      if (!mountedRef.current || !containerRef.current?.isConnected || !terminalRef.current) {
+        return;
+      }
+      const dims = getSafeDimensions(fitAddon);
+      if (!dims) {
+        return;
+      }
+      if (terminal.cols !== dims.cols || terminal.rows !== dims.rows) {
+        terminal.resize(dims.cols, dims.rows);
+      }
+      const terminalId = activeTerminalIdRef.current;
+      if (dims && terminalId) {
+        void window.api.terminals.resize({
+          terminalId,
+          cols: dims.cols,
+          rows: dims.rows
+        });
+      }
+    };
+    const fitFrameId = requestAnimationFrame(() => applyFit());
+    const resizeObserver = new ResizeObserver(() => applyFit());
+    resizeObserver.observe(containerRef.current);
+
+    terminal.attachCustomKeyEventHandler((event) => {
+      const lower = event.key.toLowerCase();
+      const isCopyShortcut =
+        event.type === "keydown" &&
+        event.shiftKey &&
+        lower === "c" &&
+        (event.ctrlKey || event.metaKey);
+      if (isCopyShortcut) {
+        void copyTerminalSelection();
+        event.preventDefault();
+        return false;
+      }
+      const isPasteShortcut =
+        event.type === "keydown" &&
+        event.shiftKey &&
+        lower === "v" &&
+        (event.ctrlKey || event.metaKey);
+      if (isPasteShortcut) {
+        void pasteFromClipboard();
+        event.preventDefault();
+        return false;
+      }
+      return true;
+    });
+
+    const unsubscribeInput = terminal.onData((data) => {
+      const terminalId = activeTerminalIdRef.current;
+      if (!terminalId) {
+        return;
+      }
+      window.api.terminals.writeInput({ terminalId, data });
+    });
+
+    const unsubscribeData = window.api.terminals.onData(({ terminalId, data }) => {
+      if (activeTerminalIdRef.current && terminalId === activeTerminalIdRef.current) {
+        const current = terminalRef.current;
+        if (mountedRef.current && current === terminal) {
+          current.write(data);
+        }
+      }
+    });
+
+    const unsubscribeExit = window.api.terminals.onExit(({ terminalId, code }) => {
+      if (
+        mountedRef.current &&
+        terminalRef.current === terminal &&
+        activeTerminalIdRef.current &&
+        terminalId === activeTerminalIdRef.current
+      ) {
+        terminal.writeln(`\r\n[process exited with code ${code}]`);
+      }
+    });
+
+    return () => {
+      mountedRef.current = false;
+      cancelAnimationFrame(fitFrameId);
+      unsubscribeInput.dispose();
+      unsubscribeData();
+      unsubscribeExit();
+      resizeObserver.disconnect();
+      fitAddonRef.current = null;
+      terminalRef.current = null;
+      terminal.dispose();
+    };
+  }, []);
+
+  return (
+    <div className="terminal-panel">
+      <div
+        className="terminal-host"
+        ref={containerRef}
+        onClick={() => terminalRef.current?.focus()}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void pasteFromClipboard();
+        }}
+      />
+    </div>
+  );
+});
