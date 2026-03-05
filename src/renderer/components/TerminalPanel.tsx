@@ -16,6 +16,8 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
   const mountedRef = useRef(false);
   const activeTerminalIdRef = useRef<string | null>(activeTerminalId);
   const terminalBuffersRef = useRef<Record<string, string>>({});
+  const suppressInputForwardingRef = useRef(false);
+  const suppressInputTimerRef = useRef<number | null>(null);
 
   const appendToBuffer = useCallback((terminalId: string, chunk: string): void => {
     const current = terminalBuffersRef.current[terminalId] ?? "";
@@ -37,7 +39,18 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
     }
     const buffered = terminalBuffersRef.current[terminalId] ?? "";
     if (buffered) {
-      terminal.write(buffered);
+      // Replaying historical output can contain ANSI queries that cause xterm
+      // to emit synthetic responses. Do not forward those to the backend.
+      suppressInputForwardingRef.current = true;
+      if (suppressInputTimerRef.current !== null) {
+        window.clearTimeout(suppressInputTimerRef.current);
+      }
+      terminal.write(buffered, () => {
+        suppressInputTimerRef.current = window.setTimeout(() => {
+          suppressInputForwardingRef.current = false;
+          suppressInputTimerRef.current = null;
+        }, 30);
+      });
     }
   }, []);
 
@@ -187,6 +200,9 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
     });
 
     const unsubscribeInput = terminal.onData((data) => {
+      if (suppressInputForwardingRef.current) {
+        return;
+      }
       const terminalId = activeTerminalIdRef.current;
       if (!terminalId) {
         return;
@@ -219,6 +235,11 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
 
     return () => {
       mountedRef.current = false;
+      suppressInputForwardingRef.current = false;
+      if (suppressInputTimerRef.current !== null) {
+        window.clearTimeout(suppressInputTimerRef.current);
+        suppressInputTimerRef.current = null;
+      }
       cancelAnimationFrame(fitFrameId);
       unsubscribeInput.dispose();
       unsubscribeData();
