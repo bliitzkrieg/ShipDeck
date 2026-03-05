@@ -321,6 +321,11 @@ function registerIpc(win: BrowserWindow): void {
     return { terminalId: terminal.id };
   });
 
+  ipcMain.handle(channels.serverGetLatestPort, (_event, rawInput) => {
+    const input = startServerInputSchema.parse(rawInput);
+    return { port: pty.getLatestPortByProject(input.projectId) };
+  });
+
   ipcMain.handle(channels.webTargetSet, (_event, rawInput) => {
     const input = setWebTargetInputSchema.parse(rawInput);
     return repo.setWebTarget(input);

@@ -60,6 +60,7 @@ declare global {
       server: {
         start(input: { projectId: string }): Promise<{ terminalId: string }>;
         restart(input: { projectId: string }): Promise<{ terminalId: string }>;
+        getLatestPort(input: { projectId: string }): Promise<{ port: number | null }>;
         onPortDetected(handler: (payload: { projectId: string; port: number; source: string }) => void): () => void;
       };
       webTarget: {

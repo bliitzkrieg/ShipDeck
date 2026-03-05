@@ -21,12 +21,16 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1>Shipdeck</h1>
-        <button className="icon-button" onClick={actions.onShowCreateProject}>
+        <div className="sidebar-heading">
+          <h1>Projects</h1>
+          <p>Manage environments and sessions</p>
+        </div>
+        <button className="icon-button" onClick={actions.onShowCreateProject} aria-label="Create project">
           <Plus size={14} />
         </button>
       </div>
       <div className="project-tree">
+        {projects.length === 0 ? <p className="sidebar-empty">Create a project to start a preview and terminal workflow.</p> : null}
         {projects.map((project) => {
           const sessions = sessionsByProject[project.id] ?? [];
           const isServerRunning = Boolean(serverTerminalsByProject[project.id]);
@@ -35,18 +39,22 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
               <div className="project-row-wrap">
                 <div className="project-info">
                   <button className="project-row" onClick={() => actions.onSelectProject(project.id)}>
-                    <span className="project-name">{project.name}</span>
+                    <span className="project-name">
+                      <span className={isServerRunning ? "server-indicator online" : "server-indicator"} />
+                      {project.name}
+                    </span>
+                    <small className="project-root">{project.rootPath}</small>
                   </button>
                 </div>
                 <div className="project-actions">
+                  <button className="project-server-icon" onClick={() => actions.onToggleServer(project.id, isServerRunning)}>
+                    {isServerRunning ? <Square size={12} /> : <Play size={12} />}
+                  </button>
                   <button className="project-edit" onClick={() => actions.onEditProject(project)}>
                     <Pencil size={12} />
                   </button>
                   <button className="project-delete" onClick={() => actions.onDeleteProject(project.id)}>
                     <Trash2 size={12} />
-                  </button>
-                  <button className="project-server-icon" onClick={() => actions.onToggleServer(project.id, isServerRunning)}>
-                    {isServerRunning ? <Square size={12} /> : <Play size={12} />}
                   </button>
                 </div>
               </div>
@@ -80,6 +88,7 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
                       </Popover.Trigger>
                       <Popover.Portal>
                         <Popover.Content className="provider-popover" side="bottom" align="end" sideOffset={6}>
+                          <p className="provider-label">Override provider</p>
                           <button onClick={() => actions.onCreateSessionWithProvider(project.id, "claude")}>Claude</button>
                           <button onClick={() => actions.onCreateSessionWithProvider(project.id, "codex")}>Codex</button>
                           <button onClick={actions.onClearDefaultProvider}>Ask every time</button>

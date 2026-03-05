@@ -32,7 +32,10 @@ export function ProjectModal({
   return (
     <div className="modal-backdrop">
       <section className="modal-card">
-        <h3>{editingProjectId ? "Edit Project" : "Create Project"}</h3>
+        <header className="modal-head">
+          <h3>{editingProjectId ? "Edit Project" : "Create Project"}</h3>
+          <p>Configure path, launch command, and default preview port.</p>
+        </header>
         {projectModalError ? <div className="panel-error">{projectModalError}</div> : null}
         <label>
           Name
@@ -68,7 +71,9 @@ export function ProjectModal({
           <button className="ghost-button" onClick={onClose}>
             Cancel
           </button>
-          <button onClick={onSubmit}>{editingProjectId ? "Save Changes" : "Create Project"}</button>
+          <button className="primary-button" onClick={onSubmit}>
+            {editingProjectId ? "Save Changes" : "Create Project"}
+          </button>
         </div>
       </section>
     </div>

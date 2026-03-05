@@ -31,7 +31,7 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
         <section className="webview-panel" ref={webviewPanelRef}>
           <div className="panel-header">
             <h2>Live Preview</h2>
-            <span>{webTargetText}</span>
+            <span className="panel-meta">{webTargetText}</span>
           </div>
           <div className="webview-hint">
             <p>The secure WebContentsView is managed in the Electron main process and rendered in this region.</p>
@@ -41,6 +41,10 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
       {isServerRunning ? <div className="splitter" onMouseDown={actions.onSplitterMouseDown} /> : null}
       <section className={isServerRunning ? "workspace-panel with-preview" : "workspace-panel full-height"}>
         {serverError ? <div className="panel-error">{serverError}</div> : null}
+        <div className="panel-header terminal-header">
+          <h2>Terminal Workspace</h2>
+          <span className="panel-meta">{terminalTabs.length} open tabs</span>
+        </div>
         <div className="terminal-tabbar">
           {terminalTabs.map((tab) => (
             <button
@@ -50,7 +54,8 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
             >
               <span>{tab.label}</span>
               {tab.sessionId ? (
-                <span
+                <button
+                  type="button"
                   className="terminal-tab-close"
                   onClick={(event) => {
                     event.preventDefault();
@@ -60,15 +65,25 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
                     }
                     actions.onCloseSessionTab(tab.sessionId as string);
                   }}
+                  aria-label={`Close ${tab.label}`}
                 >
                   <X size={11} />
-                </span>
+                </button>
               ) : null}
             </button>
           ))}
         </div>
         <div className="terminal-inline">
-          <TerminalPanel activeTerminalId={activeTerminalId} />
+          {terminalTabs.length === 0 ? (
+            <div className="empty-main">
+              <div className="empty-main-card">
+                <h2>No Active Session</h2>
+                <p>Select a project and create a session from the sidebar to open terminal tabs here.</p>
+              </div>
+            </div>
+          ) : (
+            <TerminalPanel activeTerminalId={activeTerminalId} />
+          )}
         </div>
       </section>
     </main>

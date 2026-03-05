@@ -25,6 +25,7 @@ export const channels = {
 
   serverStart: "server:start",
   serverRestart: "server:restart",
+  serverGetLatestPort: "server:getLatestPort",
 
   webTargetSet: "webTarget:set",
   preferencesGet: "preferences:get",

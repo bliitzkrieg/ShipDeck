@@ -88,6 +88,8 @@ const api = {
     start: (input: { projectId: string }): Promise<{ terminalId: string }> => ipcRenderer.invoke(channels.serverStart, input),
     restart: (input: { projectId: string }): Promise<{ terminalId: string }> =>
       ipcRenderer.invoke(channels.serverRestart, input),
+    getLatestPort: (input: { projectId: string }): Promise<{ port: number | null }> =>
+      ipcRenderer.invoke(channels.serverGetLatestPort, input),
     onPortDetected: (handler: (payload: { projectId: string; port: number; source: string }) => void): Unsubscribe => {
       const listener = (
         _event: Electron.IpcRendererEvent,

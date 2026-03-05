@@ -9,12 +9,15 @@ interface WindowBarProps {
 export function WindowBar({ activeProjectName, gitStatus }: WindowBarProps): JSX.Element {
   return (
     <header className="window-bar">
-      <div className="window-bar-left" />
+      <div className="window-bar-left">
+        <span className="window-bar-product">ShipDeck</span>
+        <span className="window-bar-context">Workspace Cockpit</span>
+      </div>
       <div className="window-bar-title">
-        <span>{activeProjectName}</span>
+        <span className="window-bar-project">{activeProjectName}</span>
         {gitStatus ? (
           <span className="window-bar-git">
-            <span className="window-bar-git-separator">|</span>
+            <span className="window-bar-branch">{gitStatus.branch}</span>
             <span className="window-bar-git-plus">+{gitStatus.added}</span>
             <span className="window-bar-git-minus">-{gitStatus.removed}</span>
           </span>

@@ -16,11 +16,18 @@ export function SessionProviderModal({
   return (
     <div className="modal-backdrop">
       <section className="modal-card session-provider-modal">
-        <h3>Choose Session Provider</h3>
+        <header className="modal-head">
+          <h3>Choose Session Provider</h3>
+          <p>Select which CLI should back this new session.</p>
+        </header>
         <p className="session-provider-help">Start a new CLI session with either Claude or Codex.</p>
         <div className="session-provider-actions">
-          <button onClick={onSelectClaude}>Claude</button>
-          <button onClick={onSelectCodex}>Codex</button>
+          <button className="primary-button" onClick={onSelectClaude}>
+            Claude
+          </button>
+          <button className="primary-button" onClick={onSelectCodex}>
+            Codex
+          </button>
         </div>
         <label className="session-provider-checkbox">
           <input

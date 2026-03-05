@@ -114,12 +114,19 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
     }
     mountedRef.current = true;
 
+    const computed = getComputedStyle(document.documentElement);
+    const terminalBackground = computed.getPropertyValue("--surface-2").trim() || "#12171d";
+    const terminalForeground = computed.getPropertyValue("--text-0").trim() || "#dfe6ee";
+    const terminalCursor = computed.getPropertyValue("--accent-0").trim() || "#7cc6ff";
+
     const terminal = new Terminal({
       convertEol: true,
-      fontFamily: "Consolas, Menlo, Monaco, monospace",
+      fontFamily: '"IBM Plex Mono", "Cascadia Mono", "Consolas", monospace',
       theme: {
-        background: "#15181b",
-        foreground: "#d4d9e6"
+        background: terminalBackground,
+        foreground: terminalForeground,
+        cursor: terminalCursor,
+        selectionBackground: "rgba(124, 198, 255, 0.25)"
       }
     });
     const fitAddon = new FitAddon();

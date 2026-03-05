@@ -11,12 +11,16 @@ export function SessionRenameModal({ title, error, setTitle, onClose, onSubmit }
     <div className="modal-backdrop">
       <section className="modal-card">
         <form
+          className="modal-form"
           onSubmit={(event) => {
             event.preventDefault();
             onSubmit();
           }}
         >
-          <h3>Rename Session</h3>
+          <header className="modal-head">
+            <h3>Rename Session</h3>
+            <p>Use a concise title so terminal tabs remain readable.</p>
+          </header>
           {error ? <div className="panel-error">{error}</div> : null}
           <label>
             Title
@@ -32,7 +36,9 @@ export function SessionRenameModal({ title, error, setTitle, onClose, onSubmit }
             <button type="button" className="ghost-button" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit">Save</button>
+            <button type="submit" className="primary-button">
+              Save
+            </button>
           </div>
         </form>
       </section>

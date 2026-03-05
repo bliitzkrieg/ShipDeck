@@ -90,6 +90,53 @@ export function useWebviewController({
   }, [isServerRunning, webviewPanelRef]);
 
   useEffect(() => {
+    if (!activeProjectId) {
+      setWebTargetText("No active localhost target");
+      return;
+    }
+
+    if (!isServerRunning) {
+      setWebTargetText("No active localhost target");
+      return;
+    }
+
+    const selectedProject = projects.find((project) => project.id === activeProjectId) ?? null;
+    const fallbackPort = selectedProject?.defaultPort ?? null;
+    let cancelled = false;
+
+    if (fallbackPort) {
+      const fallbackUrl = `http://localhost:${fallbackPort}/`;
+      setWebTargetText(fallbackUrl);
+      void window.api.webView.loadTarget({ url: fallbackUrl }).catch(() => {
+        // Ignore startup/race errors; port updates will retry navigation.
+      });
+      return;
+    }
+
+    void window.api.server
+      .getLatestPort({ projectId: activeProjectId })
+      .then(({ port }) => {
+        if (cancelled || !port) {
+          return;
+        }
+        const targetUrl = `http://localhost:${port}/`;
+        setWebTargetText(targetUrl);
+        return window.api.webView.loadTarget({ url: targetUrl }).catch(() => {
+          // Ignore startup/race errors; port updates will retry navigation.
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWebTargetText("No active localhost target");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId, isServerRunning, projects, setWebTargetText]);
+
+  useEffect(() => {
     void window.api.webView.setVisible({ visible: isServerRunning && !hasBlockingModal });
   }, [hasBlockingModal, isServerRunning]);
 }
