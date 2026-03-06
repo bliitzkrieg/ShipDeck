@@ -767,6 +767,12 @@ input {
   gap: 8px;
 }
 
+.modal-card .session-provider-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .modal-card .session-provider-checkbox input[type="checkbox"] {
   width: 14px;
   height: 14px;
