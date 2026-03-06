@@ -9,7 +9,10 @@ export type ActiveTerminalTabByProject = Record<string, string>;
 export interface TerminalTabViewModel {
   key: string;
   label: string;
+  kind: "server" | "session" | "shell";
   sessionId: string | null;
+  terminalId: string | null;
+  closable: boolean;
 }
 
 export interface ProjectSidebarModel {
@@ -31,6 +34,7 @@ export interface ProjectSidebarActions {
   onActivateSession: (projectId: string, sessionId: string) => void;
   onRenameSession: (projectId: string, session: Session) => void;
   onDeleteSession: (projectId: string, sessionId: string) => void;
+  onOpenRegularTerminal: (projectId: string) => void;
   onOpenCreateSessionFlow: (projectId: string) => void;
   onProviderMenuOpenChange: (projectId: string, open: boolean) => void;
   onCreateSessionWithProvider: (projectId: string, provider: SessionProvider) => void;
@@ -51,6 +55,7 @@ export interface WorkspacePanelModel {
 export interface WorkspacePanelActions {
   onSelectTerminalTab: (tabKey: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
+  onCloseTerminalTab: (tabKey: string) => void;
   onSplitterMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
 }
 

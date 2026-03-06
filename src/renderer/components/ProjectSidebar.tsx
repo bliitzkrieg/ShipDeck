@@ -76,27 +76,26 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
                   <button className="thread-new" onClick={() => actions.onOpenCreateSessionFlow(project.id)}>
                     <Plus size={12} /> New Session
                   </button>
-                  {defaultSessionProvider ? (
-                    <Popover.Root
-                      open={showProviderOverrideMenu === project.id}
-                      onOpenChange={(open) => actions.onProviderMenuOpenChange(project.id, open)}
-                    >
-                      <Popover.Trigger asChild>
-                        <button className="thread-new-provider" aria-label="Session provider options">
-                          <ChevronDown size={12} />
-                        </button>
-                      </Popover.Trigger>
-                      <Popover.Portal>
-                        <Popover.Content className="provider-popover" side="bottom" align="end" sideOffset={6}>
-                          <p className="provider-label">Override provider</p>
-                          <button onClick={() => actions.onCreateSessionWithProvider(project.id, "claude")}>Claude</button>
-                          <button onClick={() => actions.onCreateSessionWithProvider(project.id, "codex")}>Codex</button>
-                          <button onClick={actions.onClearDefaultProvider}>Ask every time</button>
-                          <Popover.Arrow className="provider-popover-arrow" />
-                        </Popover.Content>
-                      </Popover.Portal>
-                    </Popover.Root>
-                  ) : null}
+                  <Popover.Root
+                    open={showProviderOverrideMenu === project.id}
+                    onOpenChange={(open) => actions.onProviderMenuOpenChange(project.id, open)}
+                  >
+                    <Popover.Trigger asChild>
+                      <button className="thread-new-provider" aria-label="Session and terminal options">
+                        <ChevronDown size={12} />
+                      </button>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                      <Popover.Content className="provider-popover" side="bottom" align="end" sideOffset={6}>
+                        <p className="provider-label">Quick actions</p>
+                        <button onClick={() => actions.onCreateSessionWithProvider(project.id, "claude")}>New Claude Session</button>
+                        <button onClick={() => actions.onCreateSessionWithProvider(project.id, "codex")}>New Codex Session</button>
+                        <button onClick={() => actions.onOpenRegularTerminal(project.id)}>Open Terminal</button>
+                        {defaultSessionProvider ? <button onClick={actions.onClearDefaultProvider}>Ask every time</button> : null}
+                        <Popover.Arrow className="provider-popover-arrow" />
+                      </Popover.Content>
+                    </Popover.Portal>
+                  </Popover.Root>
                 </div>
               </div>
             </section>

@@ -23,6 +23,9 @@ export interface WorkspaceState {
   sessionTerminalsBySessionId: SessionTerminalsBySessionId;
   sessionTabsByProject: SessionTabsByProject;
   activeTerminalTabByProject: ActiveTerminalTabByProject;
+  shellTabsByProject: Record<string, string[]>;
+  shellTerminalsByTabId: Record<string, { projectId: string; terminalId: string; label: string }>;
+  shellTabCounterByProject: Record<string, number>;
 
   showSessionProviderModal: boolean;
   sessionProviderProjectId: string | null;
@@ -67,6 +70,8 @@ export interface WorkspaceActions {
   startServer: (projectId?: string | null) => Promise<void>;
   stopServer: (projectId?: string | null) => Promise<void>;
   setActiveTerminalTab: (projectId: string, tabKey: string) => void;
+  openRegularTerminal: (projectId: string) => Promise<void>;
+  closeTerminalTabByKey: (projectId: string, tabKey: string) => Promise<void>;
   removeTerminalMappingsByTerminalId: (terminalId: string) => void;
 
   activateSession: (projectId: string, sessionId: string) => Promise<void>;

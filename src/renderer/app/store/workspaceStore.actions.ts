@@ -17,6 +17,28 @@ function queueTerminalCommand(terminalId: string, command: string, options?: { d
   }
 }
 
+function getFallbackActiveTabKey(
+  projectId: string,
+  state: {
+    serverTerminalsByProject: Record<string, string>;
+    sessionTabsByProject: Record<string, string[]>;
+    shellTabsByProject: Record<string, string[]>;
+  }
+): string {
+  if (state.serverTerminalsByProject[projectId]) {
+    return "server";
+  }
+  const sessionTabs = state.sessionTabsByProject[projectId] ?? [];
+  if (sessionTabs.length > 0) {
+    return makeSessionTabKey(sessionTabs[sessionTabs.length - 1]);
+  }
+  const shellTabs = state.shellTabsByProject[projectId] ?? [];
+  if (shellTabs.length > 0) {
+    return `shell:${shellTabs[shellTabs.length - 1]}`;
+  }
+  return "";
+}
+
 export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): WorkspaceActions {
   const createSessionWithProvider = async (projectId: string, provider: SessionProvider): Promise<void> => {
     const created = await window.api.sessions.create({
@@ -161,7 +183,11 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         const projectTabs = (state.sessionTabsByProject[projectId] ?? []).filter((id) => id !== sessionId);
         const nextTabByProject = { ...state.activeTerminalTabByProject };
         if (nextTabByProject[projectId] === makeSessionTabKey(sessionId)) {
-          nextTabByProject[projectId] = state.serverTerminalsByProject[projectId] ? "server" : "";
+          nextTabByProject[projectId] = getFallbackActiveTabKey(projectId, {
+            serverTerminalsByProject: state.serverTerminalsByProject,
+            sessionTabsByProject: { ...state.sessionTabsByProject, [projectId]: projectTabs },
+            shellTabsByProject: state.shellTabsByProject
+          });
         }
         return {
           sessionTerminalsBySessionId: nextTerminals,
@@ -220,6 +246,94 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
       });
     },
 
+    openRegularTerminal: async (projectId) => {
+      const project = get().projects.find((item) => item.id === projectId);
+      if (!project) {
+        return;
+      }
+      const terminal = await window.api.terminals.create({
+        projectId: project.id,
+        name: "Terminal",
+        kind: "shell"
+      });
+      await window.api.terminals.open({
+        terminalId: terminal.id,
+        projectId: project.id,
+        cwd: project.rootPath,
+        kind: "shell"
+      });
+
+      const tabId = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      set((state) => {
+        const nextCounter = (state.shellTabCounterByProject[projectId] ?? 0) + 1;
+        return {
+          shellTabsByProject: {
+            ...state.shellTabsByProject,
+            [projectId]: [...(state.shellTabsByProject[projectId] ?? []), tabId]
+          },
+          shellTerminalsByTabId: {
+            ...state.shellTerminalsByTabId,
+            [tabId]: { projectId, terminalId: terminal.id, label: `Terminal ${nextCounter}` }
+          },
+          shellTabCounterByProject: {
+            ...state.shellTabCounterByProject,
+            [projectId]: nextCounter
+          },
+          activeTerminalTabByProject: {
+            ...state.activeTerminalTabByProject,
+            [projectId]: `shell:${tabId}`
+          },
+          activeProjectId: projectId
+        };
+      });
+    },
+
+    closeTerminalTabByKey: async (projectId, tabKey) => {
+      if (tabKey.startsWith("session:")) {
+        const sessionId = parseSessionTabKey(tabKey);
+        if (sessionId) {
+          await get().closeSessionTab(projectId, sessionId);
+        }
+        return;
+      }
+      if (tabKey === "server") {
+        return;
+      }
+      if (!tabKey.startsWith("shell:")) {
+        return;
+      }
+
+      const tabId = tabKey.slice(6);
+      const shell = get().shellTerminalsByTabId[tabId];
+      if (!shell) {
+        return;
+      }
+      await window.api.terminals.kill({ terminalId: shell.terminalId });
+      set((state) => {
+        const nextShellTabs = { ...state.shellTabsByProject };
+        nextShellTabs[projectId] = (nextShellTabs[projectId] ?? []).filter((id) => id !== tabId);
+
+        const nextShellTerminals = { ...state.shellTerminalsByTabId };
+        delete nextShellTerminals[tabId];
+
+        const nextActiveTabs = { ...state.activeTerminalTabByProject };
+        if (nextActiveTabs[projectId] === tabKey) {
+          nextActiveTabs[projectId] = getFallbackActiveTabKey(projectId, {
+            serverTerminalsByProject: state.serverTerminalsByProject,
+            sessionTabsByProject: state.sessionTabsByProject,
+            shellTabsByProject: nextShellTabs
+          });
+        }
+
+        return {
+          shellTabsByProject: nextShellTabs,
+          shellTerminalsByTabId: nextShellTerminals,
+          activeTerminalTabByProject: nextActiveTabs
+        };
+      });
+    },
+
     removeTerminalMappingsByTerminalId: (terminalId) => {
       set((state) => {
         const nextServer = { ...state.serverTerminalsByProject };
@@ -236,9 +350,44 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
           }
         }
 
+        const nextShellTerminals = { ...state.shellTerminalsByTabId };
+        const removedShellTabIds: string[] = [];
+        for (const [tabId, value] of Object.entries(state.shellTerminalsByTabId)) {
+          if (value.terminalId === terminalId) {
+            delete nextShellTerminals[tabId];
+            removedShellTabIds.push(tabId);
+          }
+        }
+
+        const nextShellTabsByProject: Record<string, string[]> = { ...state.shellTabsByProject };
+        if (removedShellTabIds.length > 0) {
+          for (const projectId of Object.keys(nextShellTabsByProject)) {
+            nextShellTabsByProject[projectId] = (nextShellTabsByProject[projectId] ?? []).filter((id) => !removedShellTabIds.includes(id));
+          }
+        }
+
+        const nextActiveTabs = { ...state.activeTerminalTabByProject };
+        for (const [projectId, value] of Object.entries(nextActiveTabs)) {
+          if (!value.startsWith("shell:")) {
+            continue;
+          }
+          const tabId = value.slice(6);
+          if (!removedShellTabIds.includes(tabId)) {
+            continue;
+          }
+          nextActiveTabs[projectId] = getFallbackActiveTabKey(projectId, {
+            serverTerminalsByProject: nextServer,
+            sessionTabsByProject: state.sessionTabsByProject,
+            shellTabsByProject: nextShellTabsByProject
+          });
+        }
+
         return {
           serverTerminalsByProject: nextServer,
-          sessionTerminalsBySessionId: nextSession
+          sessionTerminalsBySessionId: nextSession,
+          shellTerminalsByTabId: nextShellTerminals,
+          shellTabsByProject: nextShellTabsByProject,
+          activeTerminalTabByProject: nextActiveTabs
         };
       });
     },

@@ -28,6 +28,8 @@ export function App(): JSX.Element {
   const sessionTerminalsBySessionId = useWorkspaceStore((state) => state.sessionTerminalsBySessionId);
   const sessionTabsByProject = useWorkspaceStore((state) => state.sessionTabsByProject);
   const activeTerminalTabByProject = useWorkspaceStore((state) => state.activeTerminalTabByProject);
+  const shellTabsByProject = useWorkspaceStore((state) => state.shellTabsByProject);
+  const shellTerminalsByTabId = useWorkspaceStore((state) => state.shellTerminalsByTabId);
 
   const showSessionProviderModal = useWorkspaceStore((state) => state.showSessionProviderModal);
   const rememberSessionProviderChoice = useWorkspaceStore((state) => state.rememberSessionProviderChoice);
@@ -51,6 +53,8 @@ export function App(): JSX.Element {
   const startServer = useWorkspaceStore((state) => state.startServer);
   const stopServer = useWorkspaceStore((state) => state.stopServer);
   const setActiveTerminalTab = useWorkspaceStore((state) => state.setActiveTerminalTab);
+  const openRegularTerminal = useWorkspaceStore((state) => state.openRegularTerminal);
+  const closeTerminalTabByKey = useWorkspaceStore((state) => state.closeTerminalTabByKey);
   const removeTerminalMappingsByTerminalId = useWorkspaceStore((state) => state.removeTerminalMappingsByTerminalId);
   const setActiveProjectId = useWorkspaceStore((state) => state.setActiveProjectId);
   const setActiveSessionId = useWorkspaceStore((state) => state.setActiveSessionId);
@@ -91,7 +95,8 @@ export function App(): JSX.Element {
         gitStatusesByProject,
         serverTerminalsByProject,
         activeTerminalTabByProject,
-        sessionTerminalsBySessionId
+        sessionTerminalsBySessionId,
+        shellTerminalsByTabId
       }),
     [
       projects,
@@ -100,7 +105,8 @@ export function App(): JSX.Element {
       gitStatusesByProject,
       serverTerminalsByProject,
       activeTerminalTabByProject,
-      sessionTerminalsBySessionId
+      sessionTerminalsBySessionId,
+      shellTerminalsByTabId
     ]
   );
 
@@ -110,9 +116,11 @@ export function App(): JSX.Element {
         activeProjectId,
         activeSessions: activeWorkspace.activeSessions,
         sessionTabsByProject,
-        serverTerminalsByProject
+        serverTerminalsByProject,
+        shellTabsByProject,
+        shellTerminalsByTabId
       }),
-    [activeProjectId, activeWorkspace.activeSessions, sessionTabsByProject, serverTerminalsByProject]
+    [activeProjectId, activeWorkspace.activeSessions, sessionTabsByProject, serverTerminalsByProject, shellTabsByProject, shellTerminalsByTabId]
   );
 
   const hasBlockingModal = showProjectModal || showSessionProviderModal || showSessionRenameModal;
@@ -177,6 +185,16 @@ export function App(): JSX.Element {
     [activeProjectId, closeSessionTab]
   );
 
+  const onCloseTerminalTab = useCallback(
+    (tabKey: string): void => {
+      if (!activeProjectId) {
+        return;
+      }
+      void closeTerminalTabByKey(activeProjectId, tabKey);
+    },
+    [activeProjectId, closeTerminalTabByKey]
+  );
+
   const sidebarModel: ProjectSidebarModel = {
     projects,
     sessionsByProject,
@@ -200,6 +218,9 @@ export function App(): JSX.Element {
     },
     onRenameSession: openRenameSession,
     onDeleteSession,
+    onOpenRegularTerminal: (projectId) => {
+      void openRegularTerminal(projectId);
+    },
     onOpenCreateSessionFlow: (projectId) => {
       void openCreateSessionFlow(projectId);
     },
@@ -222,6 +243,7 @@ export function App(): JSX.Element {
   const workspaceActions: WorkspacePanelActions = {
     onSelectTerminalTab,
     onCloseSessionTab,
+    onCloseTerminalTab,
     onSplitterMouseDown
   };
 

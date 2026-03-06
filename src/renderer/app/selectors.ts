@@ -18,6 +18,7 @@ interface ActiveSelectionInput {
   serverTerminalsByProject: ServerTerminalsByProject;
   activeTerminalTabByProject: ActiveTerminalTabByProject;
   sessionTerminalsBySessionId: SessionTerminalsBySessionId;
+  shellTerminalsByTabId: Record<string, { projectId: string; terminalId: string; label: string }>;
 }
 
 export function selectActiveWorkspace(input: ActiveSelectionInput): ActiveWorkspaceSelection {
@@ -28,7 +29,8 @@ export function selectActiveWorkspace(input: ActiveSelectionInput): ActiveWorksp
     gitStatusesByProject,
     serverTerminalsByProject,
     activeTerminalTabByProject,
-    sessionTerminalsBySessionId
+    sessionTerminalsBySessionId,
+    shellTerminalsByTabId
   } = input;
 
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
@@ -41,7 +43,9 @@ export function selectActiveWorkspace(input: ActiveSelectionInput): ActiveWorksp
       ? (serverTerminalsByProject[activeProjectId] ?? null)
       : activeSessionTabId
         ? (sessionTerminalsBySessionId[activeSessionTabId] ?? null)
-        : null;
+        : activeTerminalTabKey?.startsWith("shell:")
+          ? (shellTerminalsByTabId[activeTerminalTabKey.slice(6)]?.terminalId ?? null)
+          : null;
 
   return {
     activeProject,
@@ -58,8 +62,10 @@ export function selectTerminalTabs(input: {
   activeSessions: Session[];
   sessionTabsByProject: SessionTabsByProject;
   serverTerminalsByProject: ServerTerminalsByProject;
+  shellTabsByProject: Record<string, string[]>;
+  shellTerminalsByTabId: Record<string, { projectId: string; terminalId: string; label: string }>;
 }): TerminalTabViewModel[] {
-  const { activeProjectId, activeSessions, sessionTabsByProject, serverTerminalsByProject } = input;
+  const { activeProjectId, activeSessions, sessionTabsByProject, serverTerminalsByProject, shellTabsByProject, shellTerminalsByTabId } = input;
 
   if (!activeProjectId) {
     return [];
@@ -69,11 +75,44 @@ export function selectTerminalTabs(input: {
   const sessionTabs = sessionTabIds
     .map((sessionId) => activeSessions.find((item) => item.id === sessionId))
     .filter((item): item is Session => Boolean(item))
-    .map((session) => ({ key: makeSessionTabKey(session.id), label: session.title, sessionId: session.id }));
+    .map((session) => ({
+      key: makeSessionTabKey(session.id),
+      label: session.title,
+      kind: "session" as const,
+      sessionId: session.id,
+      terminalId: null,
+      closable: true
+    }));
 
   const serverTab = serverTerminalsByProject[activeProjectId]
-    ? ([{ key: "server", label: "Server", sessionId: null }] as TerminalTabViewModel[])
+    ? ([
+        {
+          key: "server",
+          label: "Server",
+          kind: "server" as const,
+          sessionId: null,
+          terminalId: serverTerminalsByProject[activeProjectId] ?? null,
+          closable: false
+        }
+      ] as TerminalTabViewModel[])
     : [];
 
-  return [...serverTab, ...sessionTabs];
+  const shellTabs = (shellTabsByProject[activeProjectId] ?? [])
+    .map((tabId) => {
+      const shell = shellTerminalsByTabId[tabId];
+      if (!shell) {
+        return null;
+      }
+      return {
+        key: `shell:${tabId}`,
+        label: shell.label,
+        kind: "shell" as const,
+        sessionId: null,
+        terminalId: shell.terminalId,
+        closable: true
+      };
+    })
+    .filter((item): item is TerminalTabViewModel => Boolean(item));
+
+  return [...serverTab, ...sessionTabs, ...shellTabs];
 }

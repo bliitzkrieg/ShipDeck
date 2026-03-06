@@ -15,6 +15,9 @@ export const workspaceInitialState: WorkspaceState = {
   sessionTerminalsBySessionId: {},
   sessionTabsByProject: {},
   activeTerminalTabByProject: {},
+  shellTabsByProject: {},
+  shellTerminalsByTabId: {},
+  shellTabCounterByProject: {},
 
   showSessionProviderModal: false,
   sessionProviderProjectId: null,

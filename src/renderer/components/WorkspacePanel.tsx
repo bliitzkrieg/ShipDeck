@@ -53,7 +53,7 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
               onClick={() => actions.onSelectTerminalTab(tab.key)}
             >
               <span>{tab.label}</span>
-              {tab.sessionId ? (
+              {tab.closable ? (
                 <button
                   type="button"
                   className="terminal-tab-close"
@@ -63,7 +63,11 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
                     if (!activeProjectId) {
                       return;
                     }
-                    actions.onCloseSessionTab(tab.sessionId as string);
+                    if (tab.kind === "session" && tab.sessionId) {
+                      actions.onCloseSessionTab(tab.sessionId);
+                      return;
+                    }
+                    actions.onCloseTerminalTab(tab.key);
                   }}
                   aria-label={`Close ${tab.label}`}
                 >
