@@ -26,6 +26,21 @@ import { WebViewManager } from "./webview/manager";
 
 let mainWindow: BrowserWindow | null = null;
 
+function resolveBrowserWindowIconPath(): string | undefined {
+  if (process.platform === "darwin") {
+    return undefined;
+  }
+
+  const fileName = process.platform === "win32" ? "icon.ico" : "512x512.png";
+  const candidates = [
+    path.join(app.getAppPath(), "build", "icons", fileName),
+    path.join(process.resourcesPath, "build", "icons", fileName),
+    path.join(process.cwd(), "build", "icons", fileName)
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
 function isNavigationAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -109,6 +124,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: "#090b10",
+    icon: resolveBrowserWindowIconPath(),
     frame: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -122,6 +138,7 @@ function createMainWindow(): BrowserWindow {
   win.setMenuBarVisibility(false);
   win.removeMenu();
   win.webContents.setIgnoreMenuShortcuts(true);
+  win.maximize();
   return win;
 }
 

@@ -1,5 +1,6 @@
 import { Maximize2, Minus, X } from "lucide-react";
 import type { ProjectGitStatus } from "../../shared/types";
+import shipDeckLogo from "../assets/logo.png";
 
 interface WindowBarProps {
   activeProjectName: string;
@@ -10,7 +11,10 @@ export function WindowBar({ activeProjectName, gitStatus }: WindowBarProps): JSX
   return (
     <header className="window-bar">
       <div className="window-bar-left">
-        <span className="window-bar-product">ShipDeck</span>
+        <span className="window-bar-brand">
+          <img src={shipDeckLogo} alt="ShipDeck logo" className="window-bar-logo" />
+          <span className="window-bar-product">ShipDeck</span>
+        </span>
         <span className="window-bar-context">Workspace Cockpit</span>
       </div>
       <div className="window-bar-title">

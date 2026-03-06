@@ -7,9 +7,9 @@ interface UseWebviewControllerInput {
   isServerRunning: boolean;
   hasBlockingModal: boolean;
   webviewPanelRef: React.RefObject<HTMLElement | null>;
-  setActiveProjectId: React.Dispatch<React.SetStateAction<string | null>>;
-  setActiveSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  setWebTargetText: React.Dispatch<React.SetStateAction<string>>;
+  setActiveProjectId: (projectId: string | null) => void;
+  setActiveSessionId: (sessionId: string | null) => void;
+  setWebTargetText: (value: string) => void;
   removeTerminalMappingsByTerminalId: (terminalId: string) => void;
 }
 
