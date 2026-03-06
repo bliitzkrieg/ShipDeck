@@ -85,9 +85,11 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
       const prev = get();
       const allProjects = await window.api.projects.list();
       const grouped: SessionsByProject = {};
-      for (const project of allProjects) {
-        grouped[project.id] = await window.api.sessions.list({ projectId: project.id });
-      }
+      await Promise.all(
+        allProjects.map(async (project) => {
+          grouped[project.id] = await window.api.sessions.list({ projectId: project.id });
+        })
+      );
       const gitStatusesByProject = await window.api.projects.gitStatuses();
       const prefs = await window.api.preferences.get();
       const shouldInitializeSelection = !prev.didInitializeSelection && !prev.activeProjectId && Boolean(allProjects[0]);
@@ -534,18 +536,23 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         set({ showSessionRenameModal: false, sessionRenameError: null });
         return;
       }
-      void window.api.sessions.rename({ sessionId: editingSessionId, title: nextTitle }).then((renamed) => {
-        set((state) => ({
-          sessionsByProject: {
-            ...state.sessionsByProject,
-            [sessionRenameProjectId]: (state.sessionsByProject[sessionRenameProjectId] ?? []).map((item) =>
-              item.id === renamed.id ? renamed : item
-            )
-          },
-          showSessionRenameModal: false,
-          sessionRenameError: null
-        }));
-      });
+      void window.api.sessions.rename({ sessionId: editingSessionId, title: nextTitle })
+        .then((renamed) => {
+          set((state) => ({
+            sessionsByProject: {
+              ...state.sessionsByProject,
+              [sessionRenameProjectId]: (state.sessionsByProject[sessionRenameProjectId] ?? []).map((item) =>
+                item.id === renamed.id ? renamed : item
+              )
+            },
+            showSessionRenameModal: false,
+            sessionRenameError: null
+          }));
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : "Failed to rename session.";
+          set({ sessionRenameError: message });
+        });
     },
 
     openRenameTerminal: (projectId, tabKey) => {
