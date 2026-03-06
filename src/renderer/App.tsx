@@ -9,7 +9,7 @@ import { useInitialSessionOpen } from "./app/hooks/useInitialSessionOpen";
 import { usePreviewSplit } from "./app/hooks/usePreviewSplit";
 import { useWebviewController } from "./app/hooks/useWebviewController";
 import { selectActiveWorkspace, selectTerminalTabs } from "./app/selectors";
-import { useWorkspaceStore } from "./app/store/useWorkspaceStore";
+import { useWorkspaceStore } from "./app/store";
 import type { ProjectSidebarActions, ProjectSidebarModel, WorkspacePanelActions, WorkspacePanelModel } from "./app/types";
 
 export function App(): JSX.Element {
