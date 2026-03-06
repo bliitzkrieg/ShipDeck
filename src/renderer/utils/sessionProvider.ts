@@ -12,8 +12,7 @@ export function providerResumeLaunchCommand(provider: SessionProvider, name: str
   if (provider !== "codex") {
     return `claude --resume ${name}`;
   }
-  const looksLikeCodexSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(name);
-  return looksLikeCodexSessionId ? `codex resume ${name}` : "codex resume";
+  return "codex";
 }
 
 export function providerRenameCommand(provider: SessionProvider, name: string): string {
