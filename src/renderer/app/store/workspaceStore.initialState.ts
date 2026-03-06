@@ -17,7 +17,6 @@ export const workspaceInitialState: WorkspaceState = {
   activeTerminalTabByProject: {},
   shellTabsByProject: {},
   shellTerminalsByTabId: {},
-  shellTabCounterByProject: {},
 
   showSessionProviderModal: false,
   sessionProviderProjectId: null,
@@ -36,5 +35,10 @@ export const workspaceInitialState: WorkspaceState = {
   sessionRenameProjectId: null,
   editingSessionId: null,
   sessionTitleDraft: "",
-  sessionRenameError: null
+  sessionRenameError: null,
+  showTerminalRenameModal: false,
+  terminalRenameProjectId: null,
+  editingTerminalTabId: null,
+  terminalTitleDraft: "",
+  terminalRenameError: null
 };

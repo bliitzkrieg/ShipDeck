@@ -20,7 +20,10 @@ export interface ProjectSidebarModel {
   sessionsByProject: SessionsByProject;
   activeProjectId: string | null;
   activeSessionId: string | null;
+  activeTerminalTabKey: string | null;
   serverTerminalsByProject: ServerTerminalsByProject;
+  shellTabsByProject: Record<string, string[]>;
+  shellTerminalsByTabId: Record<string, { projectId: string; terminalId: string; label: string }>;
   defaultSessionProvider: SessionProvider | null;
   showProviderOverrideMenu: string | null;
 }
@@ -32,8 +35,11 @@ export interface ProjectSidebarActions {
   onDeleteProject: (projectId: string) => void;
   onToggleServer: (projectId: string, running: boolean) => void;
   onActivateSession: (projectId: string, sessionId: string) => void;
+  onActivateTerminalTab: (projectId: string, tabKey: string) => void;
   onRenameSession: (projectId: string, session: Session) => void;
+  onRenameTerminal: (projectId: string, tabKey: string) => void;
   onDeleteSession: (projectId: string, sessionId: string) => void;
+  onCloseTerminalTab: (projectId: string, tabKey: string) => void;
   onOpenRegularTerminal: (projectId: string) => void;
   onOpenCreateSessionFlow: (projectId: string) => void;
   onProviderMenuOpenChange: (projectId: string, open: boolean) => void;

@@ -25,7 +25,6 @@ export interface WorkspaceState {
   activeTerminalTabByProject: ActiveTerminalTabByProject;
   shellTabsByProject: Record<string, string[]>;
   shellTerminalsByTabId: Record<string, { projectId: string; terminalId: string; label: string }>;
-  shellTabCounterByProject: Record<string, number>;
 
   showSessionProviderModal: boolean;
   sessionProviderProjectId: string | null;
@@ -45,6 +44,11 @@ export interface WorkspaceState {
   editingSessionId: string | null;
   sessionTitleDraft: string;
   sessionRenameError: string | null;
+  showTerminalRenameModal: boolean;
+  terminalRenameProjectId: string | null;
+  editingTerminalTabId: string | null;
+  terminalTitleDraft: string;
+  terminalRenameError: string | null;
 }
 
 export interface WorkspaceActions {
@@ -57,6 +61,7 @@ export interface WorkspaceActions {
   setProjectCommand: (value: string) => void;
   setProjectDefaultPort: (value: string) => void;
   setSessionTitleDraft: (value: string) => void;
+  setTerminalTitleDraft: (value: string) => void;
 
   refreshGitStatuses: () => Promise<void>;
   refreshPreferences: () => Promise<void>;
@@ -92,6 +97,9 @@ export interface WorkspaceActions {
   openRenameSession: (projectId: string, session: Session) => void;
   closeRenameModal: () => void;
   submitSessionRename: () => void;
+  openRenameTerminal: (projectId: string, tabKey: string) => void;
+  closeTerminalRenameModal: () => void;
+  submitTerminalRename: () => void;
 }
 
 export type WorkspaceStore = WorkspaceState & WorkspaceActions;

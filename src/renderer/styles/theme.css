@@ -40,6 +40,7 @@ body,
   width: 100%;
   height: 100%;
   margin: 0;
+  overflow: hidden;
   background: radial-gradient(1200px 700px at 100% -20%, #1d2a35 0%, transparent 60%), var(--surface-0);
   color: var(--text-0);
   font-family: "Manrope", "Segoe UI", sans-serif;
@@ -97,6 +98,9 @@ input {
 .window-root {
   width: 100%;
   height: 100%;
+  display: grid;
+  grid-template-rows: 38px minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .window-bar {
@@ -212,7 +216,9 @@ input {
 .app-shell {
   display: grid;
   grid-template-columns: 292px 1fr;
-  height: calc(100% - 38px);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -403,10 +409,17 @@ input {
   border: 0;
   background: transparent;
   justify-content: flex-start;
+  align-items: center;
   text-align: left;
   padding: 6px;
   font-size: 0.8rem;
   color: var(--text-1);
+}
+
+.session-provider-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
 }
 
 .thread-edit,
@@ -473,7 +486,9 @@ input {
 .main-column {
   display: grid;
   grid-template-rows: 1fr;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
   background: transparent;
 }
 
@@ -486,6 +501,7 @@ input {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .webview-panel {
@@ -612,19 +628,29 @@ input {
 }
 
 .terminal-inline,
-.terminal-panel,
-.terminal-host {
+.terminal-panel {
   flex: 1;
   min-height: 0;
 }
 
-.terminal-host {
-  margin: 10px;
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
+.terminal-inline {
+  padding: 10px;
+  background: rgba(17, 25, 33, 0.92);
   overflow: hidden;
+}
+
+.terminal-panel {
   display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.terminal-host {
+  flex: 1;
+  min-height: 0;
 }
 
 .terminal-host .xterm {

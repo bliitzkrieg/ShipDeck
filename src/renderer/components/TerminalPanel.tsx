@@ -252,16 +252,14 @@ export const TerminalPanel = memo(function TerminalPanel({ activeTerminalId }: T
   }, [appendToBuffer, renderActiveBuffer]);
 
   return (
-    <div className="terminal-panel">
-      <div
-        className="terminal-host"
-        ref={containerRef}
-        onClick={() => terminalRef.current?.focus()}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          void pasteFromClipboard();
-        }}
-      />
-    </div>
+    <div
+      className="terminal-panel terminal-host"
+      ref={containerRef}
+      onClick={() => terminalRef.current?.focus()}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        void pasteFromClipboard();
+      }}
+    />
   );
 });

@@ -44,6 +44,9 @@ export function App(): JSX.Element {
   const showSessionRenameModal = useWorkspaceStore((state) => state.showSessionRenameModal);
   const sessionTitleDraft = useWorkspaceStore((state) => state.sessionTitleDraft);
   const sessionRenameError = useWorkspaceStore((state) => state.sessionRenameError);
+  const showTerminalRenameModal = useWorkspaceStore((state) => state.showTerminalRenameModal);
+  const terminalTitleDraft = useWorkspaceStore((state) => state.terminalTitleDraft);
+  const terminalRenameError = useWorkspaceStore((state) => state.terminalRenameError);
 
   const refreshProjects = useWorkspaceStore((state) => state.refreshProjects);
   const refreshLiveView = useWorkspaceStore((state) => state.refreshLiveView);
@@ -79,6 +82,10 @@ export function App(): JSX.Element {
   const closeRenameModal = useWorkspaceStore((state) => state.closeRenameModal);
   const submitSessionRename = useWorkspaceStore((state) => state.submitSessionRename);
   const setSessionTitleDraft = useWorkspaceStore((state) => state.setSessionTitleDraft);
+  const openRenameTerminal = useWorkspaceStore((state) => state.openRenameTerminal);
+  const closeTerminalRenameModal = useWorkspaceStore((state) => state.closeTerminalRenameModal);
+  const submitTerminalRename = useWorkspaceStore((state) => state.submitTerminalRename);
+  const setTerminalTitleDraft = useWorkspaceStore((state) => state.setTerminalTitleDraft);
   const deleteProject = useWorkspaceStore((state) => state.deleteProject);
   const deleteSession = useWorkspaceStore((state) => state.deleteSession);
 
@@ -123,7 +130,7 @@ export function App(): JSX.Element {
     [activeProjectId, activeWorkspace.activeSessions, sessionTabsByProject, serverTerminalsByProject, shellTabsByProject, shellTerminalsByTabId]
   );
 
-  const hasBlockingModal = showProjectModal || showSessionProviderModal || showSessionRenameModal;
+  const hasBlockingModal = showProjectModal || showSessionProviderModal || showSessionRenameModal || showTerminalRenameModal;
 
   const { previewSplitPercent, onSplitterMouseDown } = usePreviewSplit({
     isServerRunning: activeWorkspace.isServerRunning,
@@ -200,7 +207,10 @@ export function App(): JSX.Element {
     sessionsByProject,
     activeProjectId,
     activeSessionId,
+    activeTerminalTabKey: activeWorkspace.activeTerminalTabKey,
     serverTerminalsByProject,
+    shellTabsByProject,
+    shellTerminalsByTabId,
     defaultSessionProvider,
     showProviderOverrideMenu
   };
@@ -216,8 +226,18 @@ export function App(): JSX.Element {
     onActivateSession: (projectId, sessionId) => {
       void activateSession(projectId, sessionId);
     },
+    onActivateTerminalTab: (projectId, tabKey) => {
+      setActiveProjectId(projectId);
+      setActiveTerminalTab(projectId, tabKey);
+    },
     onRenameSession: openRenameSession,
+    onRenameTerminal: (projectId, tabKey) => {
+      openRenameTerminal(projectId, tabKey);
+    },
     onDeleteSession,
+    onCloseTerminalTab: (projectId, tabKey) => {
+      void closeTerminalTabByKey(projectId, tabKey);
+    },
     onOpenRegularTerminal: (projectId) => {
       void openRegularTerminal(projectId);
     },
@@ -331,6 +351,20 @@ export function App(): JSX.Element {
           setTitle={setSessionTitleDraft}
           onClose={closeRenameModal}
           onSubmit={submitSessionRename}
+        />
+      ) : null}
+
+      {showTerminalRenameModal ? (
+        <SessionRenameModal
+          title={terminalTitleDraft}
+          error={terminalRenameError}
+          setTitle={setTerminalTitleDraft}
+          onClose={closeTerminalRenameModal}
+          onSubmit={submitTerminalRename}
+          heading="Rename Terminal"
+          description="Use a concise name so terminal tabs remain readable."
+          inputLabel="Name"
+          placeholder="Terminal"
         />
       ) : null}
     </div>

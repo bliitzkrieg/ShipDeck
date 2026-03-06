@@ -4,9 +4,23 @@ interface SessionRenameModalProps {
   setTitle: (value: string) => void;
   onClose: () => void;
   onSubmit: () => void;
+  heading?: string;
+  description?: string;
+  inputLabel?: string;
+  placeholder?: string;
 }
 
-export function SessionRenameModal({ title, error, setTitle, onClose, onSubmit }: SessionRenameModalProps): JSX.Element {
+export function SessionRenameModal({
+  title,
+  error,
+  setTitle,
+  onClose,
+  onSubmit,
+  heading = "Rename Session",
+  description = "Use a concise title so terminal tabs remain readable.",
+  inputLabel = "Title",
+  placeholder = "Session title"
+}: SessionRenameModalProps): JSX.Element {
   return (
     <div className="modal-backdrop">
       <section className="modal-card">
@@ -18,17 +32,17 @@ export function SessionRenameModal({ title, error, setTitle, onClose, onSubmit }
           }}
         >
           <header className="modal-head">
-            <h3>Rename Session</h3>
-            <p>Use a concise title so terminal tabs remain readable.</p>
+            <h3>{heading}</h3>
+            <p>{description}</p>
           </header>
           {error ? <div className="panel-error">{error}</div> : null}
           <label>
-            Title
+            {inputLabel}
             <input
               className="session-rename-input"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Session title"
+              placeholder={placeholder}
               autoFocus
             />
           </label>

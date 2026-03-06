@@ -25,7 +25,11 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
     <main
       ref={mainColumnRef}
       className={isServerRunning ? "main-column with-preview" : "main-column"}
-      style={isServerRunning ? { gridTemplateRows: `${previewSplitPercent}fr 8px ${100 - previewSplitPercent}fr` } : undefined}
+      style={
+        isServerRunning
+          ? { gridTemplateRows: `minmax(0, ${previewSplitPercent}fr) 8px minmax(0, ${100 - previewSplitPercent}fr)` }
+          : undefined
+      }
     >
       {isServerRunning ? (
         <section className="webview-panel" ref={webviewPanelRef}>

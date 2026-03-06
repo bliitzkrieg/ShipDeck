@@ -1,6 +1,8 @@
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, Pencil, Play, Plus, Square, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Play, Plus, Square, Terminal, Trash2 } from "lucide-react";
 import type { ProjectSidebarActions, ProjectSidebarModel } from "../app/types";
+import claudeIcon from "../assets/claude.svg";
+import codexIcon from "../assets/codex.svg";
 
 interface ProjectSidebarProps {
   model: ProjectSidebarModel;
@@ -13,10 +15,18 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
     sessionsByProject,
     activeProjectId,
     activeSessionId,
+    activeTerminalTabKey,
     serverTerminalsByProject,
+    shellTabsByProject,
+    shellTerminalsByTabId,
     defaultSessionProvider,
     showProviderOverrideMenu
   } = model;
+
+  const providerIconBySession = {
+    claude: claudeIcon,
+    codex: codexIcon
+  } as const;
 
   return (
     <aside className="sidebar">
@@ -33,6 +43,7 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
         {projects.length === 0 ? <p className="sidebar-empty">Create a project to start a preview and terminal workflow.</p> : null}
         {projects.map((project) => {
           const sessions = sessionsByProject[project.id] ?? [];
+          const shellTabIds = shellTabsByProject[project.id] ?? [];
           const isServerRunning = Boolean(serverTerminalsByProject[project.id]);
           return (
             <section key={project.id} className={project.id === activeProjectId ? "project-group active" : "project-group"}>
@@ -62,6 +73,7 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
                 {sessions.map((session) => (
                   <div key={session.id} className={session.id === activeSessionId ? "thread-item active" : "thread-item"}>
                     <button className="thread-label" onClick={() => actions.onActivateSession(project.id, session.id)}>
+                      <img src={providerIconBySession[session.provider]} alt="" aria-hidden="true" className="session-provider-icon" />
                       {session.title}
                     </button>
                     <button className="thread-edit" onClick={() => actions.onRenameSession(project.id, session)} aria-label="Rename session">
@@ -72,6 +84,27 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
                     </button>
                   </div>
                 ))}
+                {shellTabIds.map((tabId) => {
+                  const shell = shellTerminalsByTabId[tabId];
+                  if (!shell) {
+                    return null;
+                  }
+                  const tabKey = `shell:${tabId}`;
+                  return (
+                    <div key={tabKey} className={activeTerminalTabKey === tabKey ? "thread-item active" : "thread-item"}>
+                      <button className="thread-label" onClick={() => actions.onActivateTerminalTab(project.id, tabKey)}>
+                        <Terminal size={12} />
+                        {shell.label}
+                      </button>
+                      <button className="thread-edit" onClick={() => actions.onRenameTerminal(project.id, tabKey)} aria-label="Rename terminal">
+                        <Pencil size={12} />
+                      </button>
+                      <button className="thread-delete" onClick={() => actions.onCloseTerminalTab(project.id, tabKey)}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
                 <div className="session-create-row">
                   <button className="thread-new" onClick={() => actions.onOpenCreateSessionFlow(project.id)}>
                     <Plus size={12} /> New Session

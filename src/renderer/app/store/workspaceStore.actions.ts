@@ -64,6 +64,7 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
     setProjectCommand: (value) => set({ projectCommand: value }),
     setProjectDefaultPort: (value) => set({ projectDefaultPort: value }),
     setSessionTitleDraft: (value) => set({ sessionTitleDraft: value }),
+    setTerminalTitleDraft: (value) => set({ terminalTitleDraft: value }),
 
     refreshGitStatuses: async () => {
       set({ gitStatusesByProject: await window.api.projects.gitStatuses() });
@@ -266,7 +267,6 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
       const tabId = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       set((state) => {
-        const nextCounter = (state.shellTabCounterByProject[projectId] ?? 0) + 1;
         return {
           shellTabsByProject: {
             ...state.shellTabsByProject,
@@ -274,11 +274,7 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
           },
           shellTerminalsByTabId: {
             ...state.shellTerminalsByTabId,
-            [tabId]: { projectId, terminalId: terminal.id, label: `Terminal ${nextCounter}` }
-          },
-          shellTabCounterByProject: {
-            ...state.shellTabCounterByProject,
-            [projectId]: nextCounter
+            [tabId]: { projectId, terminalId: terminal.id, label: "Terminal" }
           },
           activeTerminalTabByProject: {
             ...state.activeTerminalTabByProject,
@@ -550,6 +546,62 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
           sessionRenameError: null
         }));
       });
+    },
+
+    openRenameTerminal: (projectId, tabKey) => {
+      if (!tabKey.startsWith("shell:")) {
+        return;
+      }
+      const tabId = tabKey.slice(6);
+      const shell = get().shellTerminalsByTabId[tabId];
+      if (!shell || shell.projectId !== projectId) {
+        return;
+      }
+      set({
+        terminalRenameProjectId: projectId,
+        editingTerminalTabId: tabId,
+        terminalTitleDraft: shell.label,
+        terminalRenameError: null,
+        showTerminalRenameModal: true
+      });
+    },
+
+    closeTerminalRenameModal: () => set({ showTerminalRenameModal: false, terminalRenameError: null }),
+
+    submitTerminalRename: () => {
+      const { terminalRenameProjectId, editingTerminalTabId, terminalTitleDraft, shellTerminalsByTabId } = get();
+      if (!terminalRenameProjectId || !editingTerminalTabId) {
+        return;
+      }
+
+      const nextTitle = terminalTitleDraft.trim();
+      if (!nextTitle) {
+        set({ terminalRenameError: "Terminal name is required." });
+        return;
+      }
+
+      const current = shellTerminalsByTabId[editingTerminalTabId];
+      if (!current || current.projectId !== terminalRenameProjectId) {
+        set({ terminalRenameError: "Terminal no longer exists." });
+        return;
+      }
+
+      if (nextTitle === current.label) {
+        set({ showTerminalRenameModal: false, terminalRenameError: null });
+        return;
+      }
+
+      set((state) => ({
+        shellTerminalsByTabId: {
+          ...state.shellTerminalsByTabId,
+          [editingTerminalTabId]: {
+            ...state.shellTerminalsByTabId[editingTerminalTabId],
+            label: nextTitle
+          }
+        },
+        showTerminalRenameModal: false,
+        terminalRenameError: null
+      }));
     }
   };
 }
