@@ -1,6 +1,6 @@
 export type Role = "user" | "assistant" | "system";
 export type TerminalKind = "server" | "shell";
-export type SessionProvider = "codex" | "claude";
+export type SessionProvider = "codex" | "claude" | "opencode";
 
 export interface Project {
   id: string;

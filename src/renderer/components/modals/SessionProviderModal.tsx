@@ -3,6 +3,7 @@ interface SessionProviderModalProps {
   setRememberSessionProviderChoice: (value: boolean) => void;
   onSelectClaude: () => void;
   onSelectCodex: () => void;
+  onSelectOpenCode: () => void;
   onClose: () => void;
 }
 
@@ -11,6 +12,7 @@ export function SessionProviderModal({
   setRememberSessionProviderChoice,
   onSelectClaude,
   onSelectCodex,
+  onSelectOpenCode,
   onClose
 }: SessionProviderModalProps): JSX.Element {
   return (
@@ -20,13 +22,16 @@ export function SessionProviderModal({
           <h3>Choose Session Provider</h3>
           <p>Select which CLI should back this new session.</p>
         </header>
-        <p className="session-provider-help">Start a new CLI session with either Claude or Codex.</p>
+        <p className="session-provider-help">Start a new CLI session with Claude, Codex, or OpenCode.</p>
         <div className="session-provider-actions">
           <button className="primary-button" onClick={onSelectClaude}>
             Claude
           </button>
           <button className="primary-button" onClick={onSelectCodex}>
             Codex
+          </button>
+          <button className="primary-button" onClick={onSelectOpenCode}>
+            OpenCode
           </button>
         </div>
         <label className="session-provider-checkbox">

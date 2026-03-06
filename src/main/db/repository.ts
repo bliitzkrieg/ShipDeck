@@ -282,7 +282,7 @@ export class Repository {
       .prepare("SELECT value FROM app_state WHERE key = ?")
       .get(defaultSessionProviderKey) as Record<string, unknown> | undefined;
     const value = row ? String(row.value) : null;
-    if (value === "codex" || value === "claude") {
+    if (value === "codex" || value === "claude" || value === "opencode") {
       return { defaultSessionProvider: value };
     }
     return { defaultSessionProvider: null };

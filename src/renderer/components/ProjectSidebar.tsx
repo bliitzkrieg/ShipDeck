@@ -3,6 +3,7 @@ import { ChevronDown, Pencil, Play, Plus, Square, Terminal, Trash2 } from "lucid
 import type { ProjectSidebarActions, ProjectSidebarModel } from "../app/types";
 import claudeIcon from "../assets/claude.svg";
 import codexIcon from "../assets/codex.svg";
+import opencodeIcon from "../assets/opencode.svg";
 
 interface ProjectSidebarProps {
   model: ProjectSidebarModel;
@@ -25,7 +26,8 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
 
   const providerIconBySession = {
     claude: claudeIcon,
-    codex: codexIcon
+    codex: codexIcon,
+    opencode: opencodeIcon
   } as const;
 
   return (
@@ -123,6 +125,7 @@ export function ProjectSidebar({ model, actions }: ProjectSidebarProps): JSX.Ele
                         <p className="provider-label">Quick actions</p>
                         <button onClick={() => actions.onCreateSessionWithProvider(project.id, "claude")}>New Claude Session</button>
                         <button onClick={() => actions.onCreateSessionWithProvider(project.id, "codex")}>New Codex Session</button>
+                        <button onClick={() => actions.onCreateSessionWithProvider(project.id, "opencode")}>New OpenCode Session</button>
                         <button onClick={() => actions.onOpenRegularTerminal(project.id)}>Open Terminal</button>
                         {defaultSessionProvider ? <button onClick={actions.onClearDefaultProvider}>Ask every time</button> : null}
                         <Popover.Arrow className="provider-popover-arrow" />

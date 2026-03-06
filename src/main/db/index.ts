@@ -3,7 +3,73 @@ import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 
-const targetDbVersion = 1;
+const dbVersionV1 = 1;
+const dbVersionV2 = 2;
+const targetDbVersion = dbVersionV2;
+
+const schemaSqlV1 = `
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  root_path TEXT NOT NULL,
+  dev_command TEXT NOT NULL,
+  default_port INTEGER,
+  last_active_session_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CHECK (default_port IS NULL OR (default_port BETWEEN 1 AND 65535))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  provider TEXT NOT NULL CHECK(provider IN ('codex','claude')),
+  cli_session_name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('user','assistant','system')),
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_web_targets (
+  session_id TEXT PRIMARY KEY,
+  port INTEGER NOT NULL CHECK(port BETWEEN 1 AND 65535),
+  path TEXT NOT NULL DEFAULT '/',
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS terminals (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('server','shell')),
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS app_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_id_created_at ON messages(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_terminals_project_id ON terminals(project_id);
+CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at DESC);
+`;
 
 const schemaSql = `
 PRAGMA foreign_keys = ON;
@@ -24,7 +90,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   title TEXT NOT NULL,
-  provider TEXT NOT NULL CHECK(provider IN ('codex','claude')),
+  provider TEXT NOT NULL CHECK(provider IN ('codex','claude','opencode')),
   cli_session_name TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -89,8 +155,8 @@ function migrateToV1(instance: Database.Database): void {
     instance.exec("PRAGMA foreign_keys = OFF");
 
     if (!tableExists(instance, "projects")) {
-      instance.exec(schemaSql);
-      instance.exec(`PRAGMA user_version = ${targetDbVersion}`);
+      instance.exec(schemaSqlV1);
+      instance.exec(`PRAGMA user_version = ${dbVersionV1}`);
       instance.exec("PRAGMA foreign_keys = ON");
       instance.exec("COMMIT");
       return;
@@ -202,7 +268,45 @@ function migrateToV1(instance: Database.Database): void {
     instance.exec("CREATE INDEX IF NOT EXISTS idx_terminals_project_id ON terminals(project_id)");
     instance.exec("CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at DESC)");
 
-    instance.exec(`PRAGMA user_version = ${targetDbVersion}`);
+    instance.exec(`PRAGMA user_version = ${dbVersionV1}`);
+    instance.exec("PRAGMA foreign_keys = ON");
+    instance.exec("COMMIT");
+  } catch (error) {
+    instance.exec("ROLLBACK");
+    instance.exec("PRAGMA foreign_keys = ON");
+    throw error;
+  }
+}
+
+function migrateToV2(instance: Database.Database): void {
+  instance.exec("BEGIN IMMEDIATE TRANSACTION");
+  try {
+    instance.exec("PRAGMA foreign_keys = OFF");
+
+    if (tableExists(instance, "sessions")) {
+      instance.exec(`
+        CREATE TABLE IF NOT EXISTS sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          provider TEXT NOT NULL CHECK(provider IN ('codex','claude','opencode')),
+          cli_session_name TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+      `);
+      instance.exec(`
+        INSERT INTO sessions_new (id, project_id, title, provider, cli_session_name, created_at, updated_at)
+        SELECT id, project_id, title, provider, cli_session_name, created_at, updated_at
+        FROM sessions;
+      `);
+      instance.exec("DROP TABLE sessions");
+      instance.exec("ALTER TABLE sessions_new RENAME TO sessions");
+      instance.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id)");
+    }
+
+    instance.exec(`PRAGMA user_version = ${dbVersionV2}`);
     instance.exec("PRAGMA foreign_keys = ON");
     instance.exec("COMMIT");
   } catch (error) {
@@ -225,11 +329,16 @@ export function initDb(): Database.Database {
   instance.exec("PRAGMA foreign_keys = ON");
 
   const version = Number(instance.pragma("user_version", { simple: true }) ?? 0);
-  if (version < targetDbVersion) {
+  if (version < dbVersionV1) {
     migrateToV1(instance);
-  } else {
-    instance.exec(schemaSql);
   }
+  const versionAfterV1 = Number(instance.pragma("user_version", { simple: true }) ?? 0);
+  if (versionAfterV1 < dbVersionV2) {
+    migrateToV2(instance);
+  }
+
+  instance.exec(schemaSql);
+  instance.exec(`PRAGMA user_version = ${targetDbVersion}`);
 
   db = instance;
   return instance;

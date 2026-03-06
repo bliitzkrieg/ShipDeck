@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const idSchema = z.string().min(1);
 export const portSchema = z.number().int().min(1).max(65535);
-export const sessionProviderSchema = z.enum(["codex", "claude"]);
+export const sessionProviderSchema = z.enum(["codex", "claude", "opencode"]);
 
 export const createProjectInputSchema = z.object({
   name: z.string().min(1),

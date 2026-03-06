@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  Manage local projects, run per-project AI terminal sessions (Codex/Claude), and keep a secure localhost live preview in one place.
+  Manage local projects, run per-project AI terminal sessions (Codex/Claude/OpenCode), and keep a secure localhost live preview in one place.
 </p>
 
 ## Overview
@@ -17,7 +17,7 @@ ShipDeck is a desktop workspace for juggling multiple projects quickly:
 
 - Track and switch projects from a single sidebar
 - Launch server + shell terminals per project
-- Open and resume Codex/Claude sessions
+- Open and resume Codex/Claude/OpenCode sessions
 - Keep a secure embedded localhost preview synced to the active project/session
 
 ## Tech Stack

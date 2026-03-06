@@ -340,6 +340,7 @@ export function App(): JSX.Element {
           setRememberSessionProviderChoice={setRememberSessionProviderChoice}
           onSelectClaude={() => onSelectProvider("claude")}
           onSelectCodex={() => onSelectProvider("codex")}
+          onSelectOpenCode={() => onSelectProvider("opencode")}
           onClose={closeProviderModal}
         />
       ) : null}

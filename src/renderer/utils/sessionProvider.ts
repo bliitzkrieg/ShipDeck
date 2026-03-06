@@ -1,25 +1,47 @@
 import type { SessionProvider } from "../../shared/types";
 
 export function providerLabel(provider: SessionProvider): string {
-  return provider === "codex" ? "Codex" : "Claude";
+  switch (provider) {
+    case "codex":
+      return "Codex";
+    case "claude":
+      return "Claude";
+    case "opencode":
+      return "OpenCode";
+  }
 }
 
 export function providerBootCommand(provider: SessionProvider): string {
-  return provider === "codex" ? "codex" : "claude";
+  switch (provider) {
+    case "codex":
+      return "codex";
+    case "claude":
+      return "claude";
+    case "opencode":
+      return "opencode";
+  }
 }
 
 export function providerResumeLaunchCommand(provider: SessionProvider, name: string): string {
-  if (provider !== "codex") {
-    return `claude --resume ${name}`;
+  switch (provider) {
+    case "codex":
+      return "codex";
+    case "claude":
+      return `claude --resume ${name}`;
+    case "opencode":
+      return "opencode";
   }
-  return "codex";
 }
 
 export function providerRenameCommand(provider: SessionProvider, name: string): string {
-  if (provider === "codex") {
-    return "";
+  switch (provider) {
+    case "codex":
+      return "";
+    case "claude":
+      return `/rename ${name}`;
+    case "opencode":
+      return "";
   }
-  return `/rename ${name}`;
 }
 
 export function generateCliSessionName(provider: SessionProvider): string {
