@@ -58,7 +58,7 @@ export function App(): JSX.Element {
   const setActiveTerminalTab = useWorkspaceStore((state) => state.setActiveTerminalTab);
   const openRegularTerminal = useWorkspaceStore((state) => state.openRegularTerminal);
   const closeTerminalTabByKey = useWorkspaceStore((state) => state.closeTerminalTabByKey);
-  const removeTerminalMappingsByTerminalId = useWorkspaceStore((state) => state.removeTerminalMappingsByTerminalId);
+  const removeServerTerminalMappingByTerminalId = useWorkspaceStore((state) => state.removeServerTerminalMappingByTerminalId);
   const setActiveProjectId = useWorkspaceStore((state) => state.setActiveProjectId);
   const setActiveSessionId = useWorkspaceStore((state) => state.setActiveSessionId);
   const setWebTargetText = useWorkspaceStore((state) => state.setWebTargetText);
@@ -146,7 +146,7 @@ export function App(): JSX.Element {
     setActiveProjectId,
     setActiveSessionId,
     setWebTargetText,
-    removeTerminalMappingsByTerminalId
+    removeServerTerminalMappingByTerminalId
   });
 
   useInitialSessionOpen({

@@ -1,20 +1,82 @@
 import type { SessionProvider } from "../../../shared/types";
-import { generateCliSessionName, makeSessionTabKey, parseSessionTabKey, providerBootCommand, providerLabel, providerRenameCommand, providerResumeLaunchCommand } from "../../utils/sessionProvider";
+import {
+  generateCliSessionName,
+  makeSessionTabKey,
+  parseSessionTabKey,
+  providerBootCommand,
+  providerLabel,
+  providerRenameCommand,
+  providerResumeLaunchCommand
+} from "../../utils/sessionProvider";
 import type { SessionsByProject } from "../types";
 import type { WorkspaceActions, WorkspaceGet, WorkspaceSet } from "./workspaceStore.types";
 
 function queueTerminalCommand(terminalId: string, command: string, options?: { delayMs?: number; attempts?: number; intervalMs?: number }): void {
+  const sendCommand = (): void => {
+    window.api.terminals.writeInput({ terminalId, data: command });
+    window.setTimeout(() => {
+      window.api.terminals.writeInput({ terminalId, data: String.fromCharCode(13) });
+    }, 30);
+  };
+
   const delayMs = options?.delayMs ?? 900;
   const attempts = options?.attempts ?? 1;
   const intervalMs = options?.intervalMs ?? 700;
   for (let i = 0; i < attempts; i += 1) {
     window.setTimeout(() => {
-      void window.api.terminals.write({ terminalId, data: command });
-      window.setTimeout(() => {
-        void window.api.terminals.write({ terminalId, data: "\r" });
-      }, 40);
+      sendCommand();
     }, delayMs + i * intervalMs);
   }
+}
+
+function queueTerminalCommandAfterFirstOutput(
+  terminalId: string,
+  command: string,
+  options?: {
+    afterReadyMs?: number;
+    fallbackMs?: number;
+  }
+): void {
+  const afterReadyMs = options?.afterReadyMs ?? 1000;
+  const fallbackMs = options?.fallbackMs ?? 7000;
+  let sent = false;
+  let readyTimer: number | null = null;
+
+  const send = (): void => {
+    if (sent) {
+      return;
+    }
+    sent = true;
+    if (readyTimer !== null) {
+      window.clearTimeout(readyTimer);
+      readyTimer = null;
+    }
+    unsubscribe();
+    window.clearTimeout(fallbackTimer);
+    window.api.terminals.writeInput({ terminalId, data: command });
+    window.setTimeout(() => {
+      window.api.terminals.writeInput({ terminalId, data: String.fromCharCode(13) });
+    }, 30);
+  };
+
+  const unsubscribe = window.api.terminals.onData(({ terminalId: incomingTerminalId, data }) => {
+    if (incomingTerminalId !== terminalId || sent) {
+      return;
+    }
+    if (!data || data.trim().length === 0) {
+      return;
+    }
+    if (readyTimer !== null) {
+      return;
+    }
+    readyTimer = window.setTimeout(() => {
+      send();
+    }, afterReadyMs);
+  });
+
+  const fallbackTimer = window.setTimeout(() => {
+    send();
+  }, fallbackMs);
 }
 
 function getFallbackActiveTabKey(
@@ -166,10 +228,13 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
       });
       set((state) => ({ sessionTerminalsBySessionId: { ...state.sessionTerminalsBySessionId, [session.id]: terminal.id } }));
       if (mode === "create") {
-        queueTerminalCommand(terminal.id, providerRenameCommand(session.provider, session.cliSessionName), {
-          delayMs: 1200,
-          attempts: 1
-        });
+        const renameCommand = providerRenameCommand(session.provider, session.cliSessionName);
+        if (renameCommand) {
+          queueTerminalCommandAfterFirstOutput(terminal.id, renameCommand, {
+            afterReadyMs: 1000
+          });
+        }
+        return;
       }
     },
 
@@ -383,6 +448,32 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
           sessionTerminalsBySessionId: nextSession,
           shellTerminalsByTabId: nextShellTerminals,
           shellTabsByProject: nextShellTabsByProject,
+          activeTerminalTabByProject: nextActiveTabs
+        };
+      });
+    },
+
+    removeServerTerminalMappingByTerminalId: (terminalId) => {
+      set((state) => {
+        const nextServer = { ...state.serverTerminalsByProject };
+        const nextActiveTabs = { ...state.activeTerminalTabByProject };
+
+        for (const [projectId, value] of Object.entries(state.serverTerminalsByProject)) {
+          if (value !== terminalId) {
+            continue;
+          }
+          delete nextServer[projectId];
+          if (nextActiveTabs[projectId] === "server") {
+            nextActiveTabs[projectId] = getFallbackActiveTabKey(projectId, {
+              serverTerminalsByProject: nextServer,
+              sessionTabsByProject: state.sessionTabsByProject,
+              shellTabsByProject: state.shellTabsByProject
+            });
+          }
+        }
+
+        return {
+          serverTerminalsByProject: nextServer,
           activeTerminalTabByProject: nextActiveTabs
         };
       });

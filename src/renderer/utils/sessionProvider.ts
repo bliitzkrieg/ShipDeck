@@ -9,11 +9,17 @@ export function providerBootCommand(provider: SessionProvider): string {
 }
 
 export function providerResumeLaunchCommand(provider: SessionProvider, name: string): string {
-  return provider === "codex" ? `codex resume ${name}` : `claude --resume ${name}`;
+  if (provider !== "codex") {
+    return `claude --resume ${name}`;
+  }
+  const looksLikeCodexSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(name);
+  return looksLikeCodexSessionId ? `codex resume ${name}` : "codex resume";
 }
 
 export function providerRenameCommand(provider: SessionProvider, name: string): string {
-  void provider;
+  if (provider === "codex") {
+    return "";
+  }
   return `/rename ${name}`;
 }
 

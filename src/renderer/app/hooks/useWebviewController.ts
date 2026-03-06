@@ -10,7 +10,7 @@ interface UseWebviewControllerInput {
   setActiveProjectId: (projectId: string | null) => void;
   setActiveSessionId: (sessionId: string | null) => void;
   setWebTargetText: (value: string) => void;
-  removeTerminalMappingsByTerminalId: (terminalId: string) => void;
+  removeServerTerminalMappingByTerminalId: (terminalId: string) => void;
 }
 
 export function useWebviewController({
@@ -22,7 +22,7 @@ export function useWebviewController({
   setActiveProjectId,
   setActiveSessionId,
   setWebTargetText,
-  removeTerminalMappingsByTerminalId
+  removeServerTerminalMappingByTerminalId
 }: UseWebviewControllerInput): void {
   const projectsRef = useRef<Project[]>([]);
 
@@ -47,7 +47,7 @@ export function useWebviewController({
     });
 
     const unsubExit = window.api.terminals.onExit(({ terminalId }) => {
-      removeTerminalMappingsByTerminalId(terminalId);
+      removeServerTerminalMappingByTerminalId(terminalId);
     });
 
     return () => {
@@ -55,7 +55,7 @@ export function useWebviewController({
       unsubPort();
       unsubExit();
     };
-  }, [activeProjectId, removeTerminalMappingsByTerminalId, setActiveProjectId, setActiveSessionId, setWebTargetText]);
+  }, [activeProjectId, removeServerTerminalMappingByTerminalId, setActiveProjectId, setActiveSessionId, setWebTargetText]);
 
   useEffect(() => {
     if (!isServerRunning) {

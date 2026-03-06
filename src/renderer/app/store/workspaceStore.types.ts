@@ -78,6 +78,7 @@ export interface WorkspaceActions {
   openRegularTerminal: (projectId: string) => Promise<void>;
   closeTerminalTabByKey: (projectId: string, tabKey: string) => Promise<void>;
   removeTerminalMappingsByTerminalId: (terminalId: string) => void;
+  removeServerTerminalMappingByTerminalId: (terminalId: string) => void;
 
   activateSession: (projectId: string, sessionId: string) => Promise<void>;
   openCreateSessionFlow: (projectId: string) => Promise<void>;
