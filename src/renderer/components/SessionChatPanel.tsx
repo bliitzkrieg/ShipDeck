@@ -206,7 +206,6 @@ function ChatBubble({ message }: ChatBubbleProps): JSX.Element {
       {!isUser ? <RoleIcon role={message.role} /> : null}
       <div className={`chat-bubble ${message.role}`}>
         <BubbleContent message={message} />
-        {message.streaming ? <span className="chat-cursor" /> : null}
       </div>
     </div>
   );
@@ -242,6 +241,7 @@ function BubbleContent({ message }: { message: ChatMessage }): JSX.Element {
       <details className="chat-thinking-block">
         <summary>Reasoning</summary>
         <p className="chat-thinking-body">{message.content}</p>
+        {message.streaming ? <span className="chat-cursor" /> : null}
       </details>
     );
   }
@@ -251,11 +251,17 @@ function BubbleContent({ message }: { message: ChatMessage }): JSX.Element {
       <div className="chat-plan-block">
         <div className="chat-plan-header">Plan</div>
         <pre className="chat-plan-body">{message.content}</pre>
+        {message.streaming ? <span className="chat-cursor" /> : null}
       </div>
     );
   }
 
-  return <p className="chat-bubble-text">{message.content}</p>;
+  return (
+    <p className="chat-bubble-text">
+      {message.content}
+      {message.streaming ? <span className="chat-cursor" /> : null}
+    </p>
+  );
 }
 
 // ─── ApprovalRequest ─────────────────────────────────────────────────────────
