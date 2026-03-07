@@ -545,6 +545,42 @@ input {
   padding-bottom: 6px;
 }
 
+.workspace-view-header {
+  -webkit-app-region: no-drag;
+}
+
+.workspace-view-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-view-tab {
+  border: 1px solid var(--border-0);
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  min-height: 26px;
+}
+
+.workspace-view-tab.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-0);
+  color: var(--text-0);
+}
+
+.workspace-view-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.webview-panel-full {
+  border-bottom: 0;
+  flex: 1;
+}
+
 .panel-error {
   margin: 8px 12px 0;
   border: 1px solid rgba(255, 142, 154, 0.36);

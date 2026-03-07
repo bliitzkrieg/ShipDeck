@@ -50,7 +50,7 @@ export interface ProjectSidebarActions {
 
 export interface WorkspacePanelModel {
   isServerRunning: boolean;
-  previewSplitPercent: number;
+  workspaceView: "terminal" | "live";
   webTargetText: string;
   serverError: string | null;
   terminalTabs: TerminalTabViewModel[];
@@ -65,7 +65,7 @@ export interface WorkspacePanelActions {
   onSelectTerminalTab: (tabKey: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
   onCloseTerminalTab: (tabKey: string) => void;
-  onSplitterMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onSelectWorkspaceView: (view: "terminal" | "live") => void;
 }
 
 export interface ActiveWorkspaceSelection {

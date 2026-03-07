@@ -5,6 +5,7 @@ interface UseWebviewControllerInput {
   projects: Project[];
   activeProjectId: string | null;
   isServerRunning: boolean;
+  isLiveViewActive: boolean;
   hasBlockingModal: boolean;
   webviewPanelRef: React.RefObject<HTMLElement | null>;
   setActiveProjectId: (projectId: string | null) => void;
@@ -17,6 +18,7 @@ export function useWebviewController({
   projects,
   activeProjectId,
   isServerRunning,
+  isLiveViewActive,
   hasBlockingModal,
   webviewPanelRef,
   setActiveProjectId,
@@ -137,6 +139,6 @@ export function useWebviewController({
   }, [activeProjectId, isServerRunning, projects, setWebTargetText]);
 
   useEffect(() => {
-    void window.api.webView.setVisible({ visible: isServerRunning && !hasBlockingModal });
-  }, [hasBlockingModal, isServerRunning]);
+    void window.api.webView.setVisible({ visible: isServerRunning && isLiveViewActive && !hasBlockingModal });
+  }, [hasBlockingModal, isLiveViewActive, isServerRunning]);
 }

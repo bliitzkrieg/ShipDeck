@@ -26,10 +26,9 @@ export const SessionChatPanel = memo(function SessionChatPanel({
   }, []);
 
   useLayoutEffect(() => {
-    if (isAtBottom) {
-      scrollToBottom("instant");
-    }
-  }, [state.messages, isAtBottom, scrollToBottom]);
+    scrollToBottom("smooth");
+    setIsAtBottom(true);
+  }, [state.messages, scrollToBottom]);
 
   useEffect(() => {
     scrollToBottom("instant");

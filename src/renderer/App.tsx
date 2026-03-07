@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectSidebar } from "./components/ProjectSidebar";
 import { WindowBar } from "./components/WindowBar";
 import { WorkspacePanel } from "./components/WorkspacePanel";
@@ -6,7 +6,6 @@ import { ProjectModal } from "./components/modals/ProjectModal";
 import { SessionRenameModal } from "./components/modals/SessionRenameModal";
 import { SessionProviderModal } from "./components/modals/SessionProviderModal";
 import { useInitialSessionOpen } from "./app/hooks/useInitialSessionOpen";
-import { usePreviewSplit } from "./app/hooks/usePreviewSplit";
 import { useWebviewController } from "./app/hooks/useWebviewController";
 import { selectActiveWorkspace, selectTerminalTabs } from "./app/selectors";
 import { useWorkspaceStore } from "./app/store";
@@ -15,6 +14,7 @@ import type { ProjectSidebarActions, ProjectSidebarModel, WorkspacePanelActions,
 export function App(): JSX.Element {
   const mainColumnRef = useRef<HTMLElement | null>(null);
   const webviewPanelRef = useRef<HTMLElement | null>(null);
+  const [workspaceView, setWorkspaceView] = useState<"terminal" | "live">("terminal");
   const projects = useWorkspaceStore((state) => state.projects);
   const sessionsByProject = useWorkspaceStore((state) => state.sessionsByProject);
   const gitStatusesByProject = useWorkspaceStore((state) => state.gitStatusesByProject);
@@ -132,15 +132,11 @@ export function App(): JSX.Element {
 
   const hasBlockingModal = showProjectModal || showSessionProviderModal || showSessionRenameModal || showTerminalRenameModal;
 
-  const { previewSplitPercent, onSplitterMouseDown } = usePreviewSplit({
-    isServerRunning: activeWorkspace.isServerRunning,
-    mainColumnRef
-  });
-
   useWebviewController({
     projects,
     activeProjectId,
     isServerRunning: activeWorkspace.isServerRunning,
+    isLiveViewActive: workspaceView === "live",
     hasBlockingModal,
     webviewPanelRef,
     setActiveProjectId,
@@ -258,9 +254,15 @@ export function App(): JSX.Element {
     return (sessionsByProject[activeProjectId] ?? []).find((s) => s.id === sessionId) ?? null;
   }, [activeWorkspace.activeTerminalTabKey, activeProjectId, sessionsByProject]);
 
+  useEffect(() => {
+    if (!activeWorkspace.isServerRunning && workspaceView === "live") {
+      setWorkspaceView("terminal");
+    }
+  }, [activeWorkspace.isServerRunning, workspaceView]);
+
   const workspaceModel: WorkspacePanelModel = {
     isServerRunning: activeWorkspace.isServerRunning,
-    previewSplitPercent,
+    workspaceView,
     webTargetText,
     serverError,
     terminalTabs,
@@ -274,21 +276,38 @@ export function App(): JSX.Element {
     onSelectTerminalTab,
     onCloseSessionTab,
     onCloseTerminalTab,
-    onSplitterMouseDown
+    onSelectWorkspaceView: setWorkspaceView
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      const isRefreshShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r";
-      if (!isRefreshShortcut) {
-        return;
-      }
-
       const target = event.target;
       if (target instanceof HTMLElement) {
         if (target.closest(".terminal-host, .xterm") || target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) {
           return;
         }
+      }
+
+      const isModifier = event.ctrlKey || event.metaKey;
+      if (isModifier && event.key === "1") {
+        event.preventDefault();
+        event.stopPropagation();
+        setWorkspaceView("terminal");
+        return;
+      }
+      if (isModifier && event.key === "2") {
+        if (!activeWorkspace.isServerRunning) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        setWorkspaceView("live");
+        return;
+      }
+
+      const isRefreshShortcut = isModifier && event.key.toLowerCase() === "r";
+      if (!isRefreshShortcut) {
+        return;
       }
 
       if (!activeWorkspace.isServerRunning || !webTargetText.startsWith("http://localhost:")) {

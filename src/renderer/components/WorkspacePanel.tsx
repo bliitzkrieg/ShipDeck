@@ -16,7 +16,7 @@ interface WorkspacePanelProps {
 export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions }: WorkspacePanelProps): JSX.Element {
   const {
     isServerRunning,
-    previewSplitPercent,
+    workspaceView,
     webTargetText,
     serverError,
     terminalTabs,
@@ -37,90 +37,111 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
   const showChatPanel = isSessionTab && activeSession !== null;
 
   return (
-    <main
-      ref={mainColumnRef}
-      className={isServerRunning ? "main-column with-preview" : "main-column"}
-      style={
-        isServerRunning
-          ? { gridTemplateRows: `minmax(0, ${previewSplitPercent}fr) 8px minmax(0, ${100 - previewSplitPercent}fr)` }
-          : undefined
-      }
-    >
-      {isServerRunning ? (
-        <section className="webview-panel" ref={webviewPanelRef}>
-          <div className="panel-header">
-            <h2>Live Preview</h2>
-            <span className="panel-meta">{webTargetText}</span>
-          </div>
-          <div className="webview-hint">
-            <p>The secure WebContentsView is managed in the Electron main process and rendered in this region.</p>
-          </div>
-        </section>
-      ) : null}
-      {isServerRunning ? <div className="splitter" onMouseDown={actions.onSplitterMouseDown} /> : null}
-      <section className={isServerRunning ? "workspace-panel with-preview" : "workspace-panel full-height"}>
+    <main ref={mainColumnRef} className="main-column">
+      <section className="workspace-panel full-height">
         {serverError ? <div className="panel-error">{serverError}</div> : null}
-        <div className="panel-header terminal-header">
-          <h2>Terminal Workspace</h2>
-          <span className="panel-meta">{terminalTabs.length} open tabs</span>
-        </div>
-        <div className="terminal-tabbar">
-          {terminalTabs.map((tab) => (
+
+        <div className="panel-header workspace-view-header">
+          <div className="workspace-view-tabs" role="tablist" aria-label="Workspace view">
             <button
-              key={tab.key}
-              className={activeTerminalTabKey === tab.key ? "terminal-tab active" : "terminal-tab"}
-              onClick={() => actions.onSelectTerminalTab(tab.key)}
+              type="button"
+              role="tab"
+              aria-selected={workspaceView === "terminal"}
+              className={workspaceView === "terminal" ? "workspace-view-tab active" : "workspace-view-tab"}
+              onClick={() => actions.onSelectWorkspaceView("terminal")}
             >
-              {tab.kind === "session" && tab.provider ? (
-                <img
-                  src={providerIconBySession[tab.provider]}
-                  alt=""
-                  aria-hidden="true"
-                  className="terminal-tab-provider-icon"
-                />
-              ) : null}
-              <span>{tab.label}</span>
-              {tab.closable ? (
-                <button
-                  type="button"
-                  className="terminal-tab-close"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (!activeProjectId) {
-                      return;
-                    }
-                    if (tab.kind === "session" && tab.sessionId) {
-                      actions.onCloseSessionTab(tab.sessionId);
-                      return;
-                    }
-                    actions.onCloseTerminalTab(tab.key);
-                  }}
-                  aria-label={`Close ${tab.label}`}
-                >
-                  <X size={11} />
-                </button>
-              ) : null}
+              Terminal
             </button>
-          ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspaceView === "live"}
+              className={workspaceView === "live" ? "workspace-view-tab active" : "workspace-view-tab"}
+              onClick={() => actions.onSelectWorkspaceView("live")}
+              disabled={!isServerRunning}
+              title={!isServerRunning ? "Start server to open live view" : "Ctrl/Cmd+2"}
+            >
+              Live View
+            </button>
+          </div>
+          <span className="panel-meta">
+            {workspaceView === "terminal" ? `${terminalTabs.length} open tabs` : webTargetText}
+          </span>
         </div>
-        <div className="terminal-inline">
-          {terminalTabs.length === 0 ? (
-            <div className="empty-main">
-              <div className="empty-main-card">
-                <h2>No Active Session</h2>
-                <p>Select a project and create a session from the sidebar to open terminal tabs here.</p>
+
+        {workspaceView === "live" ? (
+          <section className="webview-panel webview-panel-full" ref={webviewPanelRef}>
+            {isServerRunning ? (
+              <div className="webview-hint">
+                <p>The secure WebContentsView is managed in the Electron main process and rendered in this region.</p>
               </div>
+            ) : (
+              <div className="empty-main">
+                <div className="empty-main-card">
+                  <h2>Live View Unavailable</h2>
+                  <p>Start the project server from the sidebar to open live preview.</p>
+                </div>
+              </div>
+            )}
+          </section>
+        ) : (
+          <>
+            <div className="terminal-tabbar">
+              {terminalTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  className={activeTerminalTabKey === tab.key ? "terminal-tab active" : "terminal-tab"}
+                  onClick={() => actions.onSelectTerminalTab(tab.key)}
+                >
+                  {tab.kind === "session" && tab.provider ? (
+                    <img
+                      src={providerIconBySession[tab.provider]}
+                      alt=""
+                      aria-hidden="true"
+                      className="terminal-tab-provider-icon"
+                    />
+                  ) : null}
+                  <span>{tab.label}</span>
+                  {tab.closable ? (
+                    <button
+                      type="button"
+                      className="terminal-tab-close"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!activeProjectId) {
+                          return;
+                        }
+                        if (tab.kind === "session" && tab.sessionId) {
+                          actions.onCloseSessionTab(tab.sessionId);
+                          return;
+                        }
+                        actions.onCloseTerminalTab(tab.key);
+                      }}
+                      aria-label={`Close ${tab.label}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  ) : null}
+                </button>
+              ))}
             </div>
-          ) : showChatPanel ? (
-            <SessionChatPanel
-              terminalId={activeTerminalId}
-              session={activeSession}
-            />
-          ) : (
-            <TerminalPanel activeTerminalId={activeTerminalId} />
-          )}
-        </div>
+            <div className="terminal-inline">
+              {terminalTabs.length === 0 ? (
+                <div className="empty-main">
+                  <div className="empty-main-card">
+                    <h2>No Active Session</h2>
+                    <p>Select a project and create a session from the sidebar to open terminal tabs here.</p>
+                  </div>
+                </div>
+              ) : showChatPanel ? (
+                <SessionChatPanel terminalId={activeTerminalId} session={activeSession} />
+              ) : (
+                <TerminalPanel activeTerminalId={activeTerminalId} />
+              )}
+            </div>
+          </>
+        )}
       </section>
     </main>
   );
