@@ -13,7 +13,10 @@ export const SessionChatPanel = memo(function SessionChatPanel({
   terminalId,
   session
 }: SessionChatPanelProps): JSX.Element {
-  const [state, actions] = useChatSession(terminalId, session?.id ?? null);
+  const [state, actions] = useChatSession(terminalId, session?.id ?? null, {
+    title: session?.title,
+    provider: session?.provider
+  });
   const [input, setInput] = useState("");
   const [isAtBottom, setIsAtBottom] = useState(true);
 

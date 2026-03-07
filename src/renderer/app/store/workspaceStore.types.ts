@@ -69,6 +69,7 @@ export interface WorkspaceActions {
   refreshProjects: () => Promise<void>;
   refreshLiveView: () => Promise<void>;
 
+  autoRenameSessionTitle: (sessionId: string, title: string) => Promise<void>;
   ensureSessionTabOpen: (projectId: string, sessionId: string) => void;
   openSessionTerminal: (session: Session, mode: "create" | "restore") => Promise<void>;
   closeSessionTab: (projectId: string, sessionId: string) => Promise<void>;

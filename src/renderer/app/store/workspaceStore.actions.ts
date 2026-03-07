@@ -1,4 +1,4 @@
-import type { SessionProvider } from "../../../shared/types";
+import type { Session, SessionProvider } from "../../../shared/types";
 import {
   generateCliSessionName,
   makeSessionTabKey,
@@ -124,6 +124,38 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         return;
       }
       await window.api.webView.loadTarget({ url: target });
+    },
+
+    autoRenameSessionTitle: async (sessionId, title) => {
+      const trimmed = title.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      const state = get();
+      let projectId: string | null = null;
+      let existing: Session | null = null;
+
+      for (const [pid, sessions] of Object.entries(state.sessionsByProject)) {
+        const found = sessions.find((item) => item.id === sessionId);
+        if (found) {
+          projectId = pid;
+          existing = found;
+          break;
+        }
+      }
+
+      if (!projectId || !existing || existing.title === trimmed) {
+        return;
+      }
+
+      const renamed = await window.api.sessions.rename({ sessionId, title: trimmed });
+      set((s) => ({
+        sessionsByProject: {
+          ...s.sessionsByProject,
+          [projectId]: (s.sessionsByProject[projectId] ?? []).map((item) => (item.id === sessionId ? renamed : item))
+        }
+      }));
     },
 
     ensureSessionTabOpen: (projectId, sessionId) => {
