@@ -1,4 +1,6 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync, accessSync, constants as fsConstants } from "node:fs";
+import path from "node:path";
 import type { BrowserWindow } from "electron";
 import { channels } from "../../shared/ipc";
 import type { AgentEvent, SessionProvider } from "../../shared/types";
@@ -76,60 +78,72 @@ function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
-function withAugmentedPath(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const home = env.HOME ?? "";
+function getShellPath(env: NodeJS.ProcessEnv): string {
+  const shell = env.SHELL || "/bin/bash";
+  // Ask the login shell to print its PATH and nothing else.
+  const result = spawnSync(shell, ["-lc", "echo $PATH"], {
+    env,
+    encoding: "utf8",
+    timeout: 5000
+  });
+  const printed = (result.stdout ?? "").trim().split(/\r?\n/).pop()?.trim() ?? "";
+  return printed.length > 0 ? printed : env.PATH ?? "";
+}
+
+function buildEnvWithFullPath(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const shellPath = getShellPath(baseEnv);
+  const home = baseEnv.HOME ?? "";
   const extras = [
     `${home}/.npm-global/bin`,
     `${home}/.local/bin`,
+    `${home}/.nvm/versions/node/current/bin`,
     "/usr/local/bin",
-    "/opt/homebrew/bin"
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/bin",
+    "/bin"
   ].filter(Boolean);
 
-  const currentPath = env.PATH ?? "";
-  const merged = [...extras, currentPath]
-    .join(":")
-    .split(":")
-    .filter((part, idx, arr) => part.length > 0 && arr.indexOf(part) === idx)
+  const merged = [...extras, ...shellPath.split(":")]
+    .filter((p, i, arr) => p.length > 0 && arr.indexOf(p) === i)
     .join(":");
 
-  return {
-    ...env,
-    PATH: merged
-  };
+  return { ...baseEnv, PATH: merged };
 }
 
-function resolveInLoginShell(command: string, env: NodeJS.ProcessEnv): string | null {
+function findExecutable(command: string, env: NodeJS.ProcessEnv): string | null {
+  // Check if it's already an absolute path.
+  if (path.isAbsolute(command)) {
+    try {
+      accessSync(command, fsConstants.X_OK);
+      return command;
+    } catch {
+      return null;
+    }
+  }
+
+  // Search PATH entries.
+  const dirs = (env.PATH ?? "").split(":");
+  for (const dir of dirs) {
+    if (!dir) continue;
+    const full = path.join(dir, command);
+    try {
+      accessSync(full, fsConstants.X_OK);
+      return full;
+    } catch {
+      // not found here
+    }
+  }
+
+  // Ask the shell as a last resort (non-interactive to avoid hangs).
   const shell = env.SHELL || "/bin/bash";
-  const lookup = spawnSync(shell, ["-ilc", `command -v ${command} || true`], {
+  const result = spawnSync(shell, ["-lc", `command -v ${command} 2>/dev/null || true`], {
     env,
-    encoding: "utf8"
+    encoding: "utf8",
+    timeout: 5000
   });
-  const found = (lookup.stdout ?? "").trim().split(/\r?\n/).pop()?.trim();
-  return found && found.length > 0 ? found : null;
-}
-
-function resolveExecutable(command: string, env: NodeJS.ProcessEnv): string | null {
-  const direct = spawnSync(command, ["--version"], {
-    env,
-    stdio: "ignore"
-  });
-
-  if (!direct.error) {
-    return command;
-  }
-
-  const viaLoginShell = resolveInLoginShell(command, env);
-  if (viaLoginShell) {
-    return viaLoginShell;
-  }
-
-  const shellLookup = spawnSync("bash", ["-lc", `command -v ${command}`], {
-    env,
-    encoding: "utf8"
-  });
-  const found = (shellLookup.stdout ?? "").trim().split(/\r?\n/).pop()?.trim();
-
-  if (found) {
+  const found = (result.stdout ?? "").trim().split(/\r?\n/).pop()?.trim();
+  if (found && found.length > 0 && !found.includes(" ") && existsSync(found)) {
     return found;
   }
 
@@ -260,15 +274,15 @@ export class AgentSessionManager {
   // ─── Codex ──────────────────────────────────────────────────────────────
 
   private async openCodex(input: AgentSessionOpenInput): Promise<void> {
-    const env = withAugmentedPath(process.env);
-    const codexBin = resolveExecutable("codex", env);
+    const env = buildEnvWithFullPath(process.env);
+    const codexBin = findExecutable("codex", env);
 
     if (!codexBin) {
       this.emit({
         kind: "session.error",
         terminalId: input.terminalId,
         sessionId: input.sessionId,
-        message: "Codex binary not found. Electron couldn't resolve your shell PATH."
+        message: `Codex binary not found. Searched PATH: ${env.PATH ?? "(empty)"}. Make sure 'codex' is installed and try opening a terminal to confirm 'which codex'.`
       });
       this.win.webContents.send(channels.terminalsOnExit, { terminalId: input.terminalId, code: 1, signal: 0 });
       return;
@@ -645,9 +659,9 @@ export class AgentSessionManager {
   }
 
   private async sendClaudeTurn(session: RunningSession & RunningClaudeSession, text: string): Promise<string> {
-    const env = withAugmentedPath(process.env);
-    const claudeBin = resolveExecutable("claude", env) ?? resolveExecutable("claude-code", env);
-    const npxBin = resolveExecutable("npx", env);
+    const env = buildEnvWithFullPath(process.env);
+    const claudeBin = findExecutable("claude", env) ?? findExecutable("claude-code", env);
+    const npxBin = findExecutable("npx", env);
 
     let runtimeBin: string | null = null;
     let args: string[] = [];
