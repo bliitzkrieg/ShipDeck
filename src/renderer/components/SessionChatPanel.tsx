@@ -74,43 +74,34 @@ export const SessionChatPanel = memo(function SessionChatPanel({
 
   return (
     <div className="chat-panel">
-      {/* Header */}
-      <div className="chat-header">
-        <div className="chat-header-info">
-          <span className="chat-provider-badge" data-provider={session?.provider ?? "unknown"}>
-            {providerLabel(session?.provider)}
+      <div className="chat-floating-status">
+        {!state.isReady ? (
+          <span className="chat-status connecting">
+            <Loader2 size={12} className="spin" />
+            Connecting…
           </span>
-          {session?.title ? <span className="chat-session-title">{session.title}</span> : null}
-        </div>
-        <div className="chat-header-status">
-          {!state.isReady ? (
-            <span className="chat-status connecting">
-              <Loader2 size={12} className="spin" />
-              Connecting…
-            </span>
-          ) : state.isBusy ? (
-            <span className="chat-status busy">
-              <Loader2 size={12} className="spin" />
-              Thinking…
-            </span>
-          ) : (
-            <span className="chat-status ready">
-              <span className="chat-status-dot" />
-              Ready
-            </span>
-          )}
-          {state.isBusy ? (
-            <button
-              type="button"
-              className="chat-interrupt-btn"
-              onClick={() => void actions.interrupt()}
-              title="Interrupt"
-            >
-              <Square size={12} />
-              Stop
-            </button>
-          ) : null}
-        </div>
+        ) : state.isBusy ? (
+          <span className="chat-status busy">
+            <Loader2 size={12} className="spin" />
+            Thinking…
+          </span>
+        ) : (
+          <span className="chat-status ready">
+            <span className="chat-status-dot" />
+            Ready
+          </span>
+        )}
+        {state.isBusy ? (
+          <button
+            type="button"
+            className="chat-interrupt-btn"
+            onClick={() => void actions.interrupt()}
+            title="Interrupt"
+          >
+            <Square size={12} />
+            Stop
+          </button>
+        ) : null}
       </div>
 
       {/* Messages */}

@@ -1,5 +1,8 @@
 import { X } from "lucide-react";
 import type { WorkspacePanelActions, WorkspacePanelModel } from "../app/types";
+import claudeIcon from "../assets/claude.svg";
+import codexIcon from "../assets/codex.svg";
+import opencodeIcon from "../assets/opencode.svg";
 import { SessionChatPanel } from "./SessionChatPanel";
 import { TerminalPanel } from "./TerminalPanel";
 
@@ -22,6 +25,12 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
     activeTerminalId,
     activeSession
   } = model;
+
+  const providerIconBySession = {
+    claude: claudeIcon,
+    codex: codexIcon,
+    opencode: opencodeIcon
+  } as const;
 
   // Determine which panel type to show.
   const isSessionTab = activeTerminalTabKey?.startsWith("session:") ?? false;
@@ -62,6 +71,14 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
               className={activeTerminalTabKey === tab.key ? "terminal-tab active" : "terminal-tab"}
               onClick={() => actions.onSelectTerminalTab(tab.key)}
             >
+              {tab.kind === "session" && tab.provider ? (
+                <img
+                  src={providerIconBySession[tab.provider]}
+                  alt=""
+                  aria-hidden="true"
+                  className="terminal-tab-provider-icon"
+                />
+              ) : null}
               <span>{tab.label}</span>
               {tab.closable ? (
                 <button

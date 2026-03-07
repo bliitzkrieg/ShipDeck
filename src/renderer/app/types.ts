@@ -12,6 +12,7 @@ export interface TerminalTabViewModel {
   kind: "server" | "session" | "shell";
   sessionId: string | null;
   terminalId: string | null;
+  provider?: SessionProvider;
   closable: boolean;
 }
 

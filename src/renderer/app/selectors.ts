@@ -81,6 +81,7 @@ export function selectTerminalTabs(input: {
       kind: "session" as const,
       sessionId: session.id,
       terminalId: null,
+      provider: session.provider,
       closable: true
     }));
 
