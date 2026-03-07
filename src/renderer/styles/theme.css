@@ -579,6 +579,8 @@ input {
 .webview-panel-full {
   border-bottom: 0;
   flex: 1;
+  min-height: 0;
+  background: transparent;
 }
 
 .panel-error {

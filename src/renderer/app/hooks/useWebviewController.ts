@@ -60,7 +60,7 @@ export function useWebviewController({
   }, [activeProjectId, removeServerTerminalMappingByTerminalId, setActiveProjectId, setActiveSessionId, setWebTargetText]);
 
   useEffect(() => {
-    if (!isServerRunning) {
+    if (!isServerRunning || !isLiveViewActive) {
       return;
     }
 
@@ -78,7 +78,10 @@ export function useWebviewController({
       });
     };
 
+    // Run immediately and once more on next frame after layout settles.
     updateBounds();
+    const raf = window.requestAnimationFrame(updateBounds);
+
     const resizeObserver = new ResizeObserver(() => updateBounds());
     if (webviewPanelRef.current) {
       resizeObserver.observe(webviewPanelRef.current);
@@ -86,10 +89,11 @@ export function useWebviewController({
     window.addEventListener("resize", updateBounds);
 
     return () => {
+      window.cancelAnimationFrame(raf);
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateBounds);
     };
-  }, [isServerRunning, webviewPanelRef]);
+  }, [isLiveViewActive, isServerRunning, webviewPanelRef]);
 
   useEffect(() => {
     if (!activeProjectId) {
@@ -139,6 +143,10 @@ export function useWebviewController({
   }, [activeProjectId, isServerRunning, projects, setWebTargetText]);
 
   useEffect(() => {
-    void window.api.webView.setVisible({ visible: isServerRunning && isLiveViewActive && !hasBlockingModal });
+    const visible = isServerRunning && isLiveViewActive && !hasBlockingModal;
+    void window.api.webView.setVisible({ visible });
+    if (!visible) {
+      void window.api.webView.setBounds({ x: 0, y: 0, width: 1, height: 1 });
+    }
   }, [hasBlockingModal, isLiveViewActive, isServerRunning]);
 }

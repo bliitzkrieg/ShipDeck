@@ -71,11 +71,7 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
 
         {workspaceView === "live" ? (
           <section className="webview-panel webview-panel-full" ref={webviewPanelRef}>
-            {isServerRunning ? (
-              <div className="webview-hint">
-                <p>The secure WebContentsView is managed in the Electron main process and rendered in this region.</p>
-              </div>
-            ) : (
+            {isServerRunning ? null : (
               <div className="empty-main">
                 <div className="empty-main-card">
                   <h2>Live View Unavailable</h2>
