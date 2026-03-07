@@ -311,19 +311,29 @@ function registerIpc(win: BrowserWindow): void {
     return repo.createTerminal(input);
   });
 
-  ipcMain.handle(channels.terminalsOpen, (_event, rawInput: { terminalId: string; projectId: string; cwd: string; kind: "server" | "shell"; command?: string; sessionId?: string; sessionProvider?: string }) => {
+  ipcMain.handle(channels.terminalsOpen, async (_event, rawInput: { terminalId: string; projectId: string; cwd: string; kind: "server" | "shell"; command?: string; sessionId?: string; sessionProvider?: string }) => {
     // If this terminal is for a structured agent session, use AgentSessionManager.
     const { sessionId, sessionProvider } = rawInput;
-    if (sessionId && (sessionProvider === "codex" || sessionProvider === "claude" || sessionProvider === "opencode")) {
+    if (sessionId && (sessionProvider === "codex" || sessionProvider === "claude")) {
       const session = repo.getSessionById(sessionId);
-      void agentSessions.open({
-        terminalId: rawInput.terminalId,
-        sessionId,
-        provider: sessionProvider,
-        cliSessionName: session.cliSessionName,
-        cwd: rawInput.cwd,
-        mode: session.cliSessionName && session.cliSessionName.includes("-") ? "create" : "restore"
-      });
+      try {
+        await agentSessions.open({
+          terminalId: rawInput.terminalId,
+          sessionId,
+          provider: sessionProvider,
+          cliSessionName: session.cliSessionName,
+          cwd: rawInput.cwd,
+          mode: session.cliSessionName && session.cliSessionName.includes("-") ? "create" : "restore"
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        win.webContents.send(channels.agentOnEvent, {
+          kind: "session.error",
+          terminalId: rawInput.terminalId,
+          sessionId,
+          message: `Failed to open ${sessionProvider} session: ${message}`
+        });
+      }
       return { ok: true };
     }
     pty.open(rawInput);

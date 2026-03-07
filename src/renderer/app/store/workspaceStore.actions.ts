@@ -3,7 +3,10 @@ import {
   generateCliSessionName,
   makeSessionTabKey,
   parseSessionTabKey,
-  providerLabel
+  providerBootCommand,
+  providerLabel,
+  providerRenameCommand,
+  providerResumeLaunchCommand
 } from "../../utils/sessionProvider";
 import type { SessionsByProject } from "../types";
 import type { WorkspaceActions, WorkspaceGet, WorkspaceSet } from "./workspaceStore.types";
@@ -134,7 +137,7 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
       });
     },
 
-    openSessionTerminal: async (session, _mode) => {
+    openSessionTerminal: async (session, mode) => {
       if (get().sessionTerminalsBySessionId[session.id]) {
         return;
       }
@@ -147,14 +150,41 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         name: `${providerLabel(session.provider)} Session`,
         kind: "shell"
       });
-      await window.api.terminals.open({
-        terminalId: terminal.id,
-        projectId: project.id,
-        cwd: project.rootPath,
-        kind: "shell",
-        sessionId: session.id,
-        sessionProvider: session.provider
-      });
+
+      if (session.provider === "codex" || session.provider === "claude") {
+        await window.api.terminals.open({
+          terminalId: terminal.id,
+          projectId: project.id,
+          cwd: project.rootPath,
+          kind: "shell",
+          sessionId: session.id,
+          sessionProvider: session.provider
+        });
+      } else {
+        await window.api.terminals.open({
+          terminalId: terminal.id,
+          projectId: project.id,
+          cwd: project.rootPath,
+          kind: "shell",
+          command:
+            mode === "create"
+              ? providerBootCommand(session.provider)
+              : providerResumeLaunchCommand(session.provider, session.cliSessionName)
+        });
+
+        if (mode === "create") {
+          const renameCommand = providerRenameCommand(session.provider, session.cliSessionName);
+          if (renameCommand) {
+            window.setTimeout(() => {
+              window.api.terminals.writeInput({ terminalId: terminal.id, data: renameCommand });
+              window.setTimeout(() => {
+                window.api.terminals.writeInput({ terminalId: terminal.id, data: String.fromCharCode(13) });
+              }, 30);
+            }, 900);
+          }
+        }
+      }
+
       set((state) => ({ sessionTerminalsBySessionId: { ...state.sessionTerminalsBySessionId, [session.id]: terminal.id } }));
     },
 

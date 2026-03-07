@@ -225,6 +225,16 @@ export class AgentSessionManager {
     };
     this.sessions.set(input.terminalId, session);
 
+    let closed = false;
+    const closeSession = (code: number): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      this.sessions.delete(input.terminalId);
+      this.win.webContents.send(channels.terminalsOnExit, { terminalId: input.terminalId, code, signal: 0 });
+    };
+
     let stdoutBuf = "";
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBuf += chunk.toString("utf8");
@@ -237,6 +247,24 @@ export class AgentSessionManager {
       }
     });
 
+    child.on("error", (err) => {
+      for (const { timeout, reject } of session.rpcPending.values()) {
+        clearTimeout(timeout);
+        reject(new Error("Codex failed to start"));
+      }
+      session.rpcPending.clear();
+      if (session.currentTurn) {
+        session.currentTurn.reject(new Error("Codex failed to start"));
+        session.currentTurn = null;
+      }
+      const message =
+        (err as NodeJS.ErrnoException).code === "ENOENT"
+          ? "Codex CLI not found in PATH. Install Codex CLI on this machine and restart ShipDeck."
+          : `Failed to start Codex app-server: ${err.message}`;
+      this.emit({ kind: "session.error", terminalId: input.terminalId, sessionId: input.sessionId, message });
+      closeSession(1);
+    });
+
     child.on("exit", (code) => {
       for (const { timeout, reject } of session.rpcPending.values()) {
         clearTimeout(timeout);
@@ -247,36 +275,44 @@ export class AgentSessionManager {
         session.currentTurn.reject(new Error("Codex exited"));
         session.currentTurn = null;
       }
-      this.sessions.delete(input.terminalId);
-      this.win.webContents.send(channels.terminalsOnExit, { terminalId: input.terminalId, code: code ?? 0, signal: 0 });
+      closeSession(code ?? 0);
     });
 
-    await this.codexRequest(session, "initialize", {
-      clientInfo: { name: "shipdeck", title: "ShipDeck", version: "0.1.0" },
-      capabilities: { experimentalApi: true }
-    });
-    this.codexNotify(session, "initialized", {});
+    try {
+      await this.codexRequest(session, "initialize", {
+        clientInfo: { name: "shipdeck", title: "ShipDeck", version: "0.1.0" },
+        capabilities: { experimentalApi: true }
+      });
+      this.codexNotify(session, "initialized", {});
 
-    const threadParams = {
-      model: null,
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
-      cwd: input.cwd
-    };
+      const threadParams = {
+        model: null,
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+        cwd: input.cwd
+      };
 
-    const resumeThreadId = input.mode === "restore" && isUuidLike(input.cliSessionName) ? input.cliSessionName : null;
+      const resumeThreadId = input.mode === "restore" && isUuidLike(input.cliSessionName) ? input.cliSessionName : null;
 
-    if (resumeThreadId) {
-      try {
-        await this.codexRequest(session, "thread/resume", { ...threadParams, threadId: resumeThreadId });
-      } catch {
+      if (resumeThreadId) {
+        try {
+          await this.codexRequest(session, "thread/resume", { ...threadParams, threadId: resumeThreadId });
+        } catch {
+          await this.codexRequest(session, "thread/start", threadParams);
+        }
+      } else {
         await this.codexRequest(session, "thread/start", threadParams);
       }
-    } else {
-      await this.codexRequest(session, "thread/start", threadParams);
-    }
 
-    this.emit({ kind: "session.ready", terminalId: input.terminalId, sessionId: input.sessionId, provider: "codex" });
+      this.emit({ kind: "session.ready", terminalId: input.terminalId, sessionId: input.sessionId, provider: "codex" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit({ kind: "session.error", terminalId: input.terminalId, sessionId: input.sessionId, message: `Codex startup failed: ${message}` });
+      if (!child.killed) {
+        child.kill();
+      }
+      closeSession(1);
+    }
   }
 
   private async sendCodexTurn(session: RunningSession & RunningCodexSession, text: string): Promise<string> {
@@ -551,6 +587,15 @@ export class AgentSessionManager {
             assistantBuffer += delta;
           }
         }
+      });
+
+      child.on("error", (err) => {
+        session.activeChild = null;
+        const message =
+          (err as NodeJS.ErrnoException).code === "ENOENT"
+            ? "npx/Claude CLI not found in PATH. Install Claude Code CLI and restart ShipDeck."
+            : `Failed to start Claude runtime: ${err.message}`;
+        reject(new Error(message));
       });
 
       child.on("exit", (code, signal) => {
