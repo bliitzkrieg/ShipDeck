@@ -24,11 +24,19 @@ interface CodexTurnPending {
   turnId: string | null;
 }
 
+interface PendingApproval {
+  requestId: string;
+  jsonRpcId: string | number;
+  method: string;
+  detail: string;
+}
+
 interface RunningCodexSession {
   type: "codex";
   child: ChildProcessWithoutNullStreams;
   nextId: number;
   pending: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }>;
+  pendingApprovals: Map<string, PendingApproval>;
   currentInput: string;
   providerThreadId: string | null;
   activeTurnId: string | null;
@@ -227,6 +235,7 @@ export class AgentSessionManager {
       child,
       nextId: 1,
       pending: new Map(),
+      pendingApprovals: new Map(),
       currentInput: "",
       providerThreadId: null,
       activeTurnId: null,
@@ -265,6 +274,7 @@ export class AgentSessionManager {
         pending.reject(new Error("Codex session closed before request completed"));
       }
       session.pending.clear();
+      session.pendingApprovals.clear();
       if (session.currentTurn) {
         session.currentTurn.reject(new Error("Codex session exited during active turn"));
         session.currentTurn = null;
@@ -342,20 +352,26 @@ export class AgentSessionManager {
       return false;
     }
 
-    const [cmd] = prompt.split(/\s+/, 1);
+    const [cmd, ...rest] = prompt.trim().split(/\s+/);
+    const arg = rest[0] ?? "";
+
     switch (cmd) {
       case "/help":
         this.emitData(
           session.terminalId,
           [
             "Commands:",
-            "  /help        Show available commands",
-            "  /plan        Switch interaction mode to plan",
-            "  /default     Switch interaction mode to default",
-            "  /supervised  Switch runtime mode to approval-required",
-            "  /fullaccess  Switch runtime mode to full-access",
-            "  /interrupt   Interrupt current turn",
-            "  /status      Show session runtime status",
+            "  /help          Show available commands",
+            "  /plan          Switch interaction mode to plan",
+            "  /default       Switch interaction mode to default",
+            "  /supervised    Switch runtime mode to approval-required",
+            "  /fullaccess    Switch runtime mode to full-access",
+            "  /interrupt     Interrupt current turn",
+            "  /status        Show session runtime status",
+            "  /approvals     List pending approvals (Codex)",
+            "  /approve <id>  Approve one pending request (Codex)",
+            "  /deny <id>     Deny one pending request (Codex)",
+            "  /approveall    Approve all pending requests (Codex)",
             ""
           ].join("\r\n")
         );
@@ -383,7 +399,10 @@ export class AgentSessionManager {
           sessionId: session.sessionId,
           runtimeMode: "approval-required"
         });
-        this.emitData(session.terminalId, "Switched to supervised runtime mode. Reopen session to apply launch-time sandbox policy.\r\n> ");
+        this.emitData(
+          session.terminalId,
+          "Switched to supervised runtime mode. Reopen session to apply launch-time sandbox policy.\r\n> "
+        );
         return true;
       case "/fullaccess":
         session.runtimeMode = "full-access";
@@ -391,24 +410,102 @@ export class AgentSessionManager {
           sessionId: session.sessionId,
           runtimeMode: "full-access"
         });
-        this.emitData(session.terminalId, "Switched to full-access runtime mode. Reopen session to apply launch-time sandbox policy.\r\n> ");
+        this.emitData(
+          session.terminalId,
+          "Switched to full-access runtime mode. Reopen session to apply launch-time sandbox policy.\r\n> "
+        );
         return true;
       case "/interrupt":
-
         void this.interruptSession(session);
         return true;
       case "/status": {
         const providerId = session.provider === "codex" ? session.providerThreadId : session.claudeSessionId;
+        const approvalCount = session.type === "codex" ? session.pendingApprovals.size : 0;
         this.emitData(
           session.terminalId,
-          `provider=${session.provider} runtime=${session.runtimeMode} mode=${session.interactionMode} busy=${session.busy} id=${providerId ?? "n/a"}\r\n> `
+          `provider=${session.provider} runtime=${session.runtimeMode} mode=${session.interactionMode} busy=${session.busy} approvals=${approvalCount} id=${providerId ?? "n/a"}\r\n> `
         );
         return true;
       }
+      case "/approvals":
+        this.printPendingApprovals(session);
+        return true;
+      case "/approve":
+        this.resolveApprovalCommand(session, arg, "accept");
+        return true;
+      case "/deny":
+        this.resolveApprovalCommand(session, arg, "decline");
+        return true;
+      case "/approveall":
+        this.resolveAllApprovals(session, "accept");
+        return true;
       default:
         this.emitData(session.terminalId, `Unknown command: ${cmd}\r\n> `);
         return true;
     }
+  }
+
+  private printPendingApprovals(session: RunningAgentSession): void {
+    if (session.type !== "codex") {
+      this.emitData(session.terminalId, "Approvals are only supported for Codex sessions.\r\n> ");
+      return;
+    }
+
+    if (session.pendingApprovals.size === 0) {
+      this.emitData(session.terminalId, "No pending approvals.\r\n> ");
+      return;
+    }
+
+    const lines = ["Pending approvals:"];
+    for (const approval of session.pendingApprovals.values()) {
+      lines.push(`  ${approval.requestId}  ${approval.method}  ${approval.detail}`);
+    }
+    this.emitData(session.terminalId, `${lines.join("\r\n")}\r\n> `);
+  }
+
+  private resolveApprovalCommand(
+    session: RunningAgentSession,
+    requestId: string,
+    decision: "accept" | "decline"
+  ): void {
+    if (session.type !== "codex") {
+      this.emitData(session.terminalId, "Approvals are only supported for Codex sessions.\r\n> ");
+      return;
+    }
+
+    if (!requestId) {
+      this.emitData(session.terminalId, "Usage: /approve <id> or /deny <id>\r\n> ");
+      return;
+    }
+
+    const approval = session.pendingApprovals.get(requestId);
+    if (!approval) {
+      this.emitData(session.terminalId, `Unknown approval id: ${requestId}\r\n> `);
+      return;
+    }
+
+    session.pendingApprovals.delete(requestId);
+    this.codexRespond(session, approval.jsonRpcId, { decision });
+    this.emitData(session.terminalId, `Resolved approval ${requestId} => ${decision}\r\n> `);
+  }
+
+  private resolveAllApprovals(session: RunningAgentSession, decision: "accept" | "decline"): void {
+    if (session.type !== "codex") {
+      this.emitData(session.terminalId, "Approvals are only supported for Codex sessions.\r\n> ");
+      return;
+    }
+
+    if (session.pendingApprovals.size === 0) {
+      this.emitData(session.terminalId, "No pending approvals.\r\n> ");
+      return;
+    }
+
+    const approvals = Array.from(session.pendingApprovals.values());
+    for (const approval of approvals) {
+      session.pendingApprovals.delete(approval.requestId);
+      this.codexRespond(session, approval.jsonRpcId, { decision });
+    }
+    this.emitData(session.terminalId, `Resolved ${approvals.length} approvals => ${decision}\r\n> `);
   }
 
   private async interruptSession(session: RunningAgentSession): Promise<void> {
@@ -662,8 +759,26 @@ export class AgentSessionManager {
       method === "item/fileChange/requestApproval" ||
       method === "item/fileRead/requestApproval"
     ) {
-      this.emitData(session.terminalId, `\r\n[approval] ${method} → auto-accepted\r\n`);
-      this.codexRespond(session, id, { decision: "accept" });
+      if (session.runtimeMode === "full-access") {
+        this.emitData(session.terminalId, `\r\n[approval] ${method} → auto-accepted (full-access)\r\n`);
+        this.codexRespond(session, id, { decision: "accept" });
+        return;
+      }
+
+      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      const params = asObject(message.params);
+      const command = asString(params?.command) ?? asString(params?.reason) ?? "(no detail)";
+      const approval: PendingApproval = {
+        requestId,
+        jsonRpcId: id,
+        method,
+        detail: command
+      };
+      session.pendingApprovals.set(requestId, approval);
+      this.emitData(
+        session.terminalId,
+        `\r\n[approval] ${method} pending as ${requestId}\r\n  detail: ${command}\r\n  use /approve ${requestId} or /deny ${requestId}\r\n`
+      );
       return;
     }
 
@@ -736,6 +851,45 @@ export class AgentSessionManager {
       const delta = asString(payload.delta) ?? "";
       if (delta) {
         this.emitData(session.terminalId, delta);
+      }
+      return;
+    }
+
+    if (method === "turn/diff/updated") {
+      const unifiedDiff = asString(payload.unifiedDiff) ?? asString(payload.diff) ?? asString(payload.patch) ?? "";
+      if (unifiedDiff.trim()) {
+        this.emitData(session.terminalId, `\r\n--- diff ---\r\n${unifiedDiff}\r\n--- end diff ---\r\n`);
+        this.persistMessage(session.sessionId, "assistant", `[diff]\n${unifiedDiff}`);
+      }
+      return;
+    }
+
+    if (method === "item/plan/delta") {
+      const delta = asString(payload.delta) ?? asString(payload.text) ?? "";
+      if (delta.trim()) {
+        this.emitData(session.terminalId, `\r\n[plan] ${delta}`);
+      }
+      return;
+    }
+
+    if (method === "turn/plan/updated") {
+      const explanation = asString(payload.explanation);
+      const plan = Array.isArray(payload.plan) ? payload.plan : [];
+      const lines: string[] = [];
+      if (explanation) {
+        lines.push(explanation);
+      }
+      for (const entry of plan) {
+        const row = asObject(entry);
+        if (!row) continue;
+        const step = asString(row.step) ?? "step";
+        const status = asString(row.status) ?? "pending";
+        lines.push(`- [${status}] ${step}`);
+      }
+      if (lines.length > 0) {
+        const text = lines.join("\n");
+        this.emitData(session.terminalId, `\r\n[plan-updated]\r\n${text}\r\n`);
+        this.persistMessage(session.sessionId, "assistant", `[plan]\n${text}`);
       }
       return;
     }
