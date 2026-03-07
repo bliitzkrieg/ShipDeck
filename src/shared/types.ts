@@ -75,3 +75,80 @@ export interface ThemeTokens {
   shadows: Record<string, string>;
   motion: Record<string, string>;
 }
+
+// ─── Structured agent session events ───────────────────────────────────────
+
+export interface AgentEventBase {
+  terminalId: string;
+  sessionId: string;
+}
+
+export interface AgentEventSessionReady extends AgentEventBase {
+  kind: "session.ready";
+  provider: SessionProvider;
+}
+
+export interface AgentEventTurnStart extends AgentEventBase {
+  kind: "turn.start";
+}
+
+export interface AgentEventMessageDelta extends AgentEventBase {
+  kind: "message.delta";
+  delta: string;
+}
+
+export interface AgentEventThinkingDelta extends AgentEventBase {
+  kind: "thinking.delta";
+  delta: string;
+}
+
+export interface AgentEventPlanDelta extends AgentEventBase {
+  kind: "plan.delta";
+  delta: string;
+}
+
+export interface AgentEventDiffUpdate extends AgentEventBase {
+  kind: "diff.update";
+  patch: string;
+}
+
+export interface AgentEventApprovalRequest extends AgentEventBase {
+  kind: "approval.request";
+  requestId: string;
+  method: string;
+  detail: string;
+}
+
+export interface AgentEventApprovalResolved extends AgentEventBase {
+  kind: "approval.resolved";
+  requestId: string;
+  decision: string;
+}
+
+export interface AgentEventTurnComplete extends AgentEventBase {
+  kind: "turn.complete";
+  fullText: string;
+}
+
+export interface AgentEventTurnAbort extends AgentEventBase {
+  kind: "turn.abort";
+  reason: string;
+}
+
+export interface AgentEventSessionError extends AgentEventBase {
+  kind: "session.error";
+  message: string;
+}
+
+export type AgentEvent =
+  | AgentEventSessionReady
+  | AgentEventTurnStart
+  | AgentEventMessageDelta
+  | AgentEventThinkingDelta
+  | AgentEventPlanDelta
+  | AgentEventDiffUpdate
+  | AgentEventApprovalRequest
+  | AgentEventApprovalResolved
+  | AgentEventTurnComplete
+  | AgentEventTurnAbort
+  | AgentEventSessionError;

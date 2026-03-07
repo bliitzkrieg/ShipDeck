@@ -3,81 +3,10 @@ import {
   generateCliSessionName,
   makeSessionTabKey,
   parseSessionTabKey,
-  providerBootCommand,
-  providerLabel,
-  providerRenameCommand,
-  providerResumeLaunchCommand
+  providerLabel
 } from "../../utils/sessionProvider";
 import type { SessionsByProject } from "../types";
 import type { WorkspaceActions, WorkspaceGet, WorkspaceSet } from "./workspaceStore.types";
-
-function queueTerminalCommand(terminalId: string, command: string, options?: { delayMs?: number; attempts?: number; intervalMs?: number }): void {
-  const sendCommand = (): void => {
-    window.api.terminals.writeInput({ terminalId, data: command });
-    window.setTimeout(() => {
-      window.api.terminals.writeInput({ terminalId, data: String.fromCharCode(13) });
-    }, 30);
-  };
-
-  const delayMs = options?.delayMs ?? 900;
-  const attempts = options?.attempts ?? 1;
-  const intervalMs = options?.intervalMs ?? 700;
-  for (let i = 0; i < attempts; i += 1) {
-    window.setTimeout(() => {
-      sendCommand();
-    }, delayMs + i * intervalMs);
-  }
-}
-
-function queueTerminalCommandAfterFirstOutput(
-  terminalId: string,
-  command: string,
-  options?: {
-    afterReadyMs?: number;
-    fallbackMs?: number;
-  }
-): void {
-  const afterReadyMs = options?.afterReadyMs ?? 1000;
-  const fallbackMs = options?.fallbackMs ?? 7000;
-  let sent = false;
-  let readyTimer: number | null = null;
-
-  const send = (): void => {
-    if (sent) {
-      return;
-    }
-    sent = true;
-    if (readyTimer !== null) {
-      window.clearTimeout(readyTimer);
-      readyTimer = null;
-    }
-    unsubscribe();
-    window.clearTimeout(fallbackTimer);
-    window.api.terminals.writeInput({ terminalId, data: command });
-    window.setTimeout(() => {
-      window.api.terminals.writeInput({ terminalId, data: String.fromCharCode(13) });
-    }, 30);
-  };
-
-  const unsubscribe = window.api.terminals.onData(({ terminalId: incomingTerminalId, data }) => {
-    if (incomingTerminalId !== terminalId || sent) {
-      return;
-    }
-    if (!data || data.trim().length === 0) {
-      return;
-    }
-    if (readyTimer !== null) {
-      return;
-    }
-    readyTimer = window.setTimeout(() => {
-      send();
-    }, afterReadyMs);
-  });
-
-  const fallbackTimer = window.setTimeout(() => {
-    send();
-  }, fallbackMs);
-}
 
 function getFallbackActiveTabKey(
   projectId: string,
@@ -205,7 +134,7 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
       });
     },
 
-    openSessionTerminal: async (session, mode) => {
+    openSessionTerminal: async (session, _mode) => {
       if (get().sessionTerminalsBySessionId[session.id]) {
         return;
       }
@@ -223,21 +152,10 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         projectId: project.id,
         cwd: project.rootPath,
         kind: "shell",
-        command:
-          mode === "create"
-            ? providerBootCommand(session.provider)
-            : providerResumeLaunchCommand(session.provider, session.cliSessionName)
+        sessionId: session.id,
+        sessionProvider: session.provider
       });
       set((state) => ({ sessionTerminalsBySessionId: { ...state.sessionTerminalsBySessionId, [session.id]: terminal.id } }));
-      if (mode === "create") {
-        const renameCommand = providerRenameCommand(session.provider, session.cliSessionName);
-        if (renameCommand) {
-          queueTerminalCommandAfterFirstOutput(terminal.id, renameCommand, {
-            afterReadyMs: 1000
-          });
-        }
-        return;
-      }
     },
 
     closeSessionTab: async (projectId, sessionId) => {

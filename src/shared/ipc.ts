@@ -41,7 +41,12 @@ export const channels = {
   terminalsOnData: "terminals:onData",
   terminalsOnExit: "terminals:onExit",
   serverOnPortDetected: "server:onPortDetected",
-  contextOnChanged: "context:onChanged"
+  contextOnChanged: "context:onChanged",
+
+  agentOnEvent: "agent:onEvent",
+  agentSendTurn: "agent:sendTurn",
+  agentInterrupt: "agent:interrupt",
+  agentApprove: "agent:approve"
 } as const;
 
 export type ChannelName = (typeof channels)[keyof typeof channels];
