@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { BrowserWindow } from "electron";
 import { channels } from "../../shared/ipc";
 import type { AgentEvent, SessionProvider } from "../../shared/types";
@@ -74,6 +74,51 @@ function asObject(v: unknown): Record<string, unknown> | undefined {
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
+}
+
+function withAugmentedPath(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const home = env.HOME ?? "";
+  const extras = [
+    `${home}/.npm-global/bin`,
+    `${home}/.local/bin`,
+    "/usr/local/bin",
+    "/opt/homebrew/bin"
+  ].filter(Boolean);
+
+  const currentPath = env.PATH ?? "";
+  const merged = [...extras, currentPath]
+    .join(":")
+    .split(":")
+    .filter((part, idx, arr) => part.length > 0 && arr.indexOf(part) === idx)
+    .join(":");
+
+  return {
+    ...env,
+    PATH: merged
+  };
+}
+
+function resolveExecutable(command: string, env: NodeJS.ProcessEnv): string {
+  const direct = spawnSync(command, ["--version"], {
+    env,
+    stdio: "ignore"
+  });
+
+  if (!direct.error) {
+    return command;
+  }
+
+  const shellLookup = spawnSync("bash", ["-lc", `command -v ${command}`], {
+    env,
+    encoding: "utf8"
+  });
+  const found = (shellLookup.stdout ?? "").trim().split(/\r?\n/).pop()?.trim();
+
+  if (found) {
+    return found;
+  }
+
+  return command;
 }
 
 export class AgentSessionManager {
@@ -200,8 +245,11 @@ export class AgentSessionManager {
   // ─── Codex ──────────────────────────────────────────────────────────────
 
   private async openCodex(input: AgentSessionOpenInput): Promise<void> {
-    const child = spawn("codex", ["app-server"], {
+    const env = withAugmentedPath(process.env);
+    const codexBin = resolveExecutable("codex", env);
+    const child = spawn(codexBin, ["app-server"], {
       cwd: input.cwd,
+      env,
       stdio: ["pipe", "pipe", "pipe"]
     });
 
@@ -570,7 +618,13 @@ export class AgentSessionManager {
 
     args.push(text);
 
-    const child = spawn("npx", args, { cwd: session.cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const env = withAugmentedPath(process.env);
+    const npxBin = resolveExecutable("npx", env);
+    const child = spawn(npxBin, args, {
+      cwd: session.cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
     session.activeChild = child;
 
     let assistantBuffer = "";
