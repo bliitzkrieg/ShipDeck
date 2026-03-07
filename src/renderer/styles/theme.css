@@ -1227,7 +1227,7 @@ input {
 /* Composer */
 .chat-composer {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border-top: 1px solid var(--border-0);
