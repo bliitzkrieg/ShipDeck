@@ -3,6 +3,8 @@ import { z } from "zod";
 export const idSchema = z.string().min(1);
 export const portSchema = z.number().int().min(1).max(65535);
 export const sessionProviderSchema = z.enum(["codex", "claude"]);
+export const sessionRuntimeModeSchema = z.enum(["full-access", "approval-required"]);
+export const sessionInteractionModeSchema = z.enum(["default", "plan"]);
 
 export const createProjectInputSchema = z.object({
   name: z.string().min(1),
@@ -23,7 +25,9 @@ export const createSessionInputSchema = z.object({
   projectId: idSchema,
   title: z.string().min(1).optional(),
   provider: sessionProviderSchema,
-  cliSessionName: z.string().min(1)
+  cliSessionName: z.string().min(1),
+  runtimeMode: sessionRuntimeModeSchema.optional(),
+  interactionMode: sessionInteractionModeSchema.optional()
 });
 
 export const renameSessionInputSchema = z.object({
@@ -62,7 +66,9 @@ export const openTerminalInputSchema = z.object({
   sessionId: idSchema.optional(),
   sessionProvider: sessionProviderSchema.optional(),
   cliSessionName: z.string().min(1).optional(),
-  sessionMode: z.enum(["create", "restore"]).optional()
+  sessionMode: z.enum(["create", "restore"]).optional(),
+  sessionRuntimeMode: sessionRuntimeModeSchema.optional(),
+  sessionInteractionMode: sessionInteractionModeSchema.optional()
 });
 
 export const terminalIdInputSchema = z.object({

@@ -32,8 +32,14 @@ const api = {
   },
   sessions: {
     list: (input: { projectId: string }): Promise<Session[]> => ipcRenderer.invoke(channels.sessionsList, input),
-    create: (input: { projectId: string; title?: string; provider: Session["provider"]; cliSessionName: string }): Promise<Session> =>
-      ipcRenderer.invoke(channels.sessionsCreate, input),
+    create: (input: {
+      projectId: string;
+      title?: string;
+      provider: Session["provider"];
+      cliSessionName: string;
+      runtimeMode?: Session["runtimeMode"];
+      interactionMode?: Session["interactionMode"];
+    }): Promise<Session> => ipcRenderer.invoke(channels.sessionsCreate, input),
     rename: (input: { sessionId: string; title: string }): Promise<Session> =>
       ipcRenderer.invoke(channels.sessionsRename, input),
     delete: (input: { sessionId: string }): Promise<{ ok: true }> =>
@@ -67,6 +73,8 @@ const api = {
       sessionProvider?: Session["provider"];
       cliSessionName?: string;
       sessionMode?: "create" | "restore";
+      sessionRuntimeMode?: Session["runtimeMode"];
+      sessionInteractionMode?: Session["interactionMode"];
     }): Promise<{ ok: true }> => ipcRenderer.invoke(channels.terminalsOpen, input),
     write: (input: { terminalId: string; data: string }): Promise<{ ok: true }> =>
       ipcRenderer.invoke(channels.terminalsWrite, input),

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 
-const targetDbVersion = 1;
+const targetDbVersion = 2;
 
 const schemaSql = `
 PRAGMA foreign_keys = ON;
@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   title TEXT NOT NULL,
   provider TEXT NOT NULL CHECK(provider IN ('codex','claude')),
   cli_session_name TEXT NOT NULL,
+  runtime_mode TEXT NOT NULL DEFAULT 'full-access' CHECK(runtime_mode IN ('full-access','approval-required')),
+  interaction_mode TEXT NOT NULL DEFAULT 'default' CHECK(interaction_mode IN ('default','plan')),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -110,21 +112,43 @@ function migrateToV1(instance: Database.Database): void {
         title TEXT NOT NULL,
         provider TEXT NOT NULL CHECK(provider IN ('codex','claude')),
         cli_session_name TEXT NOT NULL,
+        runtime_mode TEXT NOT NULL DEFAULT 'full-access' CHECK(runtime_mode IN ('full-access','approval-required')),
+        interaction_mode TEXT NOT NULL DEFAULT 'default' CHECK(interaction_mode IN ('default','plan')),
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
       );
     `);
 
+    if (!columnExists(instance, "sessions", "runtime_mode")) {
+      instance.exec("ALTER TABLE sessions ADD COLUMN runtime_mode TEXT NOT NULL DEFAULT 'full-access'");
+    }
+
+    if (!columnExists(instance, "sessions", "interaction_mode")) {
+      instance.exec("ALTER TABLE sessions ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'default'");
+    }
+
     if (tableExists(instance, "conversations")) {
       instance.exec(`
-        INSERT OR IGNORE INTO sessions (id, project_id, title, provider, cli_session_name, created_at, updated_at)
+        INSERT OR IGNORE INTO sessions (
+          id,
+          project_id,
+          title,
+          provider,
+          cli_session_name,
+          runtime_mode,
+          interaction_mode,
+          created_at,
+          updated_at
+        )
         SELECT
           id,
           project_id,
           title,
           COALESCE(provider, 'codex'),
           ('legacy-' || COALESCE(provider, 'codex') || '-' || id),
+          'full-access',
+          'default',
           created_at,
           updated_at
         FROM conversations;

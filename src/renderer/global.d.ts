@@ -29,7 +29,14 @@ declare global {
       };
       sessions: {
         list(input: { projectId: string }): Promise<Session[]>;
-        create(input: { projectId: string; title?: string; provider: Session["provider"]; cliSessionName: string }): Promise<Session>;
+        create(input: {
+          projectId: string;
+          title?: string;
+          provider: Session["provider"];
+          cliSessionName: string;
+          runtimeMode?: Session["runtimeMode"];
+          interactionMode?: Session["interactionMode"];
+        }): Promise<Session>;
         rename(input: { sessionId: string; title: string }): Promise<Session>;
         delete(input: { sessionId: string }): Promise<{ ok: true }>;
       };
@@ -53,6 +60,8 @@ declare global {
           sessionProvider?: Session["provider"];
           cliSessionName?: string;
           sessionMode?: "create" | "restore";
+          sessionRuntimeMode?: Session["runtimeMode"];
+          sessionInteractionMode?: Session["interactionMode"];
         }): Promise<{ ok: true }>;
         write(input: { terminalId: string; data: string }): Promise<{ ok: true }>;
         writeInput(input: { terminalId: string; data: string }): void;

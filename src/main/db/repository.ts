@@ -35,6 +35,8 @@ function mapSession(row: Record<string, unknown>): Session {
     title: String(row.title),
     provider: String(row.provider) as SessionProvider,
     cliSessionName: String(row.cli_session_name),
+    runtimeMode: (String(row.runtime_mode ?? "full-access") as Session["runtimeMode"]),
+    interactionMode: (String(row.interaction_mode ?? "default") as Session["interactionMode"]),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at)
   };
@@ -128,16 +130,45 @@ export class Repository {
     return rows.map(mapSession);
   }
 
-  createSession(input: { projectId: string; title?: string; provider: SessionProvider; cliSessionName: string }): Session {
+  createSession(input: {
+    projectId: string;
+    title?: string;
+    provider: SessionProvider;
+    cliSessionName: string;
+    runtimeMode?: Session["runtimeMode"];
+    interactionMode?: Session["interactionMode"];
+  }): Session {
     this.getProjectById(input.projectId);
     const ts = nowTs();
     const id = makeId("ses");
+    const runtimeMode = input.runtimeMode ?? "full-access";
+    const interactionMode = input.interactionMode ?? "default";
     this.db
       .prepare(
-        `INSERT INTO sessions (id, project_id, title, provider, cli_session_name, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (
+          id,
+          project_id,
+          title,
+          provider,
+          cli_session_name,
+          runtime_mode,
+          interaction_mode,
+          created_at,
+          updated_at
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.projectId, input.title ?? "New session", input.provider, input.cliSessionName, ts, ts);
+      .run(
+        id,
+        input.projectId,
+        input.title ?? "New session",
+        input.provider,
+        input.cliSessionName,
+        runtimeMode,
+        interactionMode,
+        ts,
+        ts
+      );
     return this.getSessionById(id);
   }
 
@@ -154,6 +185,19 @@ export class Repository {
     this.db
       .prepare("UPDATE sessions SET cli_session_name = ?, updated_at = ? WHERE id = ?")
       .run(input.cliSessionName, ts, input.sessionId);
+    return this.getSessionById(input.sessionId);
+  }
+
+  updateSessionModes(input: {
+    sessionId: string;
+    runtimeMode?: Session["runtimeMode"];
+    interactionMode?: Session["interactionMode"];
+  }): Session {
+    const current = this.getSessionById(input.sessionId);
+    const ts = nowTs();
+    this.db
+      .prepare("UPDATE sessions SET runtime_mode = ?, interaction_mode = ?, updated_at = ? WHERE id = ?")
+      .run(input.runtimeMode ?? current.runtimeMode, input.interactionMode ?? current.interactionMode, ts, input.sessionId);
     return this.getSessionById(input.sessionId);
   }
 

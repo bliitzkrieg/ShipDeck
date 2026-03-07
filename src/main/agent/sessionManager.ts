@@ -3,6 +3,7 @@ import type { BrowserWindow } from "electron";
 import { channels } from "../../shared/ipc";
 import type { SessionProvider } from "../../shared/types";
 
+type AgentRuntimeMode = "full-access" | "approval-required";
 type AgentInteractionMode = "default" | "plan";
 
 interface AgentSessionOpenInput {
@@ -12,6 +13,8 @@ interface AgentSessionOpenInput {
   cliSessionName: string;
   cwd: string;
   mode: "create" | "restore";
+  runtimeMode?: AgentRuntimeMode;
+  interactionMode?: AgentInteractionMode;
 }
 
 interface CodexTurnPending {
@@ -32,6 +35,7 @@ interface RunningCodexSession {
   currentTurn: CodexTurnPending | null;
   busy: boolean;
   interactionMode: AgentInteractionMode;
+  runtimeMode: AgentRuntimeMode;
 }
 
 interface RunningClaudeSession {
@@ -41,6 +45,7 @@ interface RunningClaudeSession {
   claudeSessionId: string | null;
   activeChild: ChildProcessWithoutNullStreams | null;
   interactionMode: AgentInteractionMode;
+  runtimeMode: AgentRuntimeMode;
 }
 
 type RunningAgentSession = {
@@ -60,6 +65,11 @@ interface AgentSessionManagerHooks {
     sessionId: string;
     role: "user" | "assistant";
     content: string;
+  }) => void;
+  onSessionModeChanged?: (payload: {
+    sessionId: string;
+    runtimeMode?: AgentRuntimeMode;
+    interactionMode?: AgentInteractionMode;
   }) => void;
 }
 
@@ -222,7 +232,8 @@ export class AgentSessionManager {
       activeTurnId: null,
       currentTurn: null,
       busy: false,
-      interactionMode: "default"
+      interactionMode: input.interactionMode ?? "default",
+      runtimeMode: input.runtimeMode ?? "full-access"
     };
 
     this.sessions.set(input.terminalId, session);
@@ -282,8 +293,8 @@ export class AgentSessionManager {
 
     const threadParams = {
       model: null,
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
+      approvalPolicy: session.runtimeMode === "approval-required" ? "on-request" : "never",
+      sandbox: session.runtimeMode === "approval-required" ? "workspace-write" : "danger-full-access",
       cwd: input.cwd
     };
 
@@ -316,7 +327,8 @@ export class AgentSessionManager {
       claudeSessionId:
         input.mode === "restore" && isUuidLike(input.cliSessionName) ? input.cliSessionName : null,
       activeChild: null,
-      interactionMode: "default"
+      interactionMode: input.interactionMode ?? "default",
+      runtimeMode: input.runtimeMode ?? "full-access"
     };
     this.sessions.set(input.terminalId, session);
     this.emitData(
@@ -340,6 +352,8 @@ export class AgentSessionManager {
             "  /help        Show available commands",
             "  /plan        Switch interaction mode to plan",
             "  /default     Switch interaction mode to default",
+            "  /supervised  Switch runtime mode to approval-required",
+            "  /fullaccess  Switch runtime mode to full-access",
             "  /interrupt   Interrupt current turn",
             "  /status      Show session runtime status",
             ""
@@ -349,20 +363,45 @@ export class AgentSessionManager {
         return true;
       case "/plan":
         session.interactionMode = "plan";
+        this.hooks.onSessionModeChanged?.({
+          sessionId: session.sessionId,
+          interactionMode: "plan"
+        });
         this.emitData(session.terminalId, "Switched to plan mode.\r\n> ");
         return true;
       case "/default":
         session.interactionMode = "default";
+        this.hooks.onSessionModeChanged?.({
+          sessionId: session.sessionId,
+          interactionMode: "default"
+        });
         this.emitData(session.terminalId, "Switched to default mode.\r\n> ");
         return true;
+      case "/supervised":
+        session.runtimeMode = "approval-required";
+        this.hooks.onSessionModeChanged?.({
+          sessionId: session.sessionId,
+          runtimeMode: "approval-required"
+        });
+        this.emitData(session.terminalId, "Switched to supervised runtime mode. Reopen session to apply launch-time sandbox policy.\r\n> ");
+        return true;
+      case "/fullaccess":
+        session.runtimeMode = "full-access";
+        this.hooks.onSessionModeChanged?.({
+          sessionId: session.sessionId,
+          runtimeMode: "full-access"
+        });
+        this.emitData(session.terminalId, "Switched to full-access runtime mode. Reopen session to apply launch-time sandbox policy.\r\n> ");
+        return true;
       case "/interrupt":
+
         void this.interruptSession(session);
         return true;
       case "/status": {
         const providerId = session.provider === "codex" ? session.providerThreadId : session.claudeSessionId;
         this.emitData(
           session.terminalId,
-          `provider=${session.provider} mode=${session.interactionMode} busy=${session.busy} id=${providerId ?? "n/a"}\r\n> `
+          `provider=${session.provider} runtime=${session.runtimeMode} mode=${session.interactionMode} busy=${session.busy} id=${providerId ?? "n/a"}\r\n> `
         );
         return true;
       }
@@ -511,6 +550,10 @@ export class AgentSessionManager {
 
     if (session.interactionMode === "plan") {
       args.push("--permission-mode", "plan");
+    } else if (session.runtimeMode === "full-access") {
+      args.push("--permission-mode", "bypassPermissions");
+    } else {
+      args.push("--permission-mode", "default");
     }
 
     args.push(prompt);

@@ -1,6 +1,8 @@
 export type Role = "user" | "assistant" | "system";
 export type TerminalKind = "server" | "shell";
 export type SessionProvider = "codex" | "claude";
+export type SessionRuntimeMode = "full-access" | "approval-required";
+export type SessionInteractionMode = "default" | "plan";
 
 export interface Project {
   id: string;
@@ -25,6 +27,8 @@ export interface Session {
   title: string;
   provider: SessionProvider;
   cliSessionName: string;
+  runtimeMode: SessionRuntimeMode;
+  interactionMode: SessionInteractionMode;
   createdAt: number;
   updatedAt: number;
 }

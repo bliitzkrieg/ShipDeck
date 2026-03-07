@@ -155,7 +155,9 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         sessionId: session.id,
         sessionProvider: session.provider,
         cliSessionName: session.cliSessionName,
-        sessionMode: mode
+        sessionMode: mode,
+        sessionRuntimeMode: session.runtimeMode,
+        sessionInteractionMode: session.interactionMode
       });
       set((state) => ({ sessionTerminalsBySessionId: { ...state.sessionTerminalsBySessionId, [session.id]: terminal.id } }));
     },

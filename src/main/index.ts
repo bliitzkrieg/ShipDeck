@@ -187,6 +187,13 @@ function registerIpc(win: BrowserWindow): void {
       } catch (error) {
         console.warn("Failed to persist provider message:", error);
       }
+    },
+    onSessionModeChanged: ({ sessionId, runtimeMode, interactionMode }) => {
+      try {
+        repo.updateSessionModes({ sessionId, runtimeMode, interactionMode });
+      } catch (error) {
+        console.warn("Failed to persist provider mode changes:", error);
+      }
     }
   });
 
@@ -327,7 +334,9 @@ function registerIpc(win: BrowserWindow): void {
         provider: input.sessionProvider,
         cliSessionName: input.cliSessionName,
         cwd: input.cwd,
-        mode: input.sessionMode
+        mode: input.sessionMode,
+        runtimeMode: input.sessionRuntimeMode,
+        interactionMode: input.sessionInteractionMode
       });
       return { ok: true };
     }
