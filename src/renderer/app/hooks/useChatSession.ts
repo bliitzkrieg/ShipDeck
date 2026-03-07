@@ -30,6 +30,7 @@ export interface ChatSessionState {
 
 type Action =
   | { type: "SET_TERMINAL"; terminalId: string | null; sessionId: string | null }
+  | { type: "HYDRATE"; snapshot: ChatSessionState }
   | { type: "SESSION_READY"; provider: SessionProvider }
   | { type: "TURN_START" }
   | { type: "MESSAGE_DELTA"; delta: string; role: ChatMessageRole }
@@ -58,6 +59,8 @@ const INITIAL_STATE: ChatSessionState = {
   error: null
 };
 
+const SESSION_CACHE = new Map<string, ChatSessionState>();
+
 function reducer(state: ChatSessionState, action: Action): ChatSessionState {
   switch (action.type) {
     case "SET_TERMINAL":
@@ -66,6 +69,9 @@ function reducer(state: ChatSessionState, action: Action): ChatSessionState {
         terminalId: action.terminalId,
         sessionId: action.sessionId
       };
+
+    case "HYDRATE":
+      return action.snapshot;
 
     case "SESSION_READY":
       return { ...state, isReady: true, provider: action.provider, error: null };
@@ -174,11 +180,23 @@ export function useChatSession(
   terminalId: string | null,
   sessionId: string | null
 ): [ChatSessionState, ChatSessionActions] {
-  const [state, dispatch] = useReducer(reducer, {
-    ...INITIAL_STATE,
-    terminalId,
-    sessionId
-  });
+  const [state, dispatch] = useReducer(
+    reducer,
+    { terminalId, sessionId },
+    ({ terminalId: initTerminalId, sessionId: initSessionId }) => {
+      if (initTerminalId) {
+        const cached = SESSION_CACHE.get(initTerminalId);
+        if (cached) {
+          return cached;
+        }
+      }
+      return {
+        ...INITIAL_STATE,
+        terminalId: initTerminalId,
+        sessionId: initSessionId
+      };
+    }
+  );
 
   const terminalIdRef = useRef(terminalId);
   const sessionIdRef = useRef(sessionId);
@@ -188,9 +206,26 @@ export function useChatSession(
     if (terminalId !== terminalIdRef.current || sessionId !== sessionIdRef.current) {
       terminalIdRef.current = terminalId;
       sessionIdRef.current = sessionId;
+
+      if (terminalId) {
+        const cached = SESSION_CACHE.get(terminalId);
+        if (cached) {
+          dispatch({ type: "HYDRATE", snapshot: cached });
+          return;
+        }
+      }
+
       dispatch({ type: "SET_TERMINAL", terminalId, sessionId });
     }
   }, [terminalId, sessionId]);
+
+  // Persist per-terminal chat/session state so tab switches don't force reconnect UI.
+  useEffect(() => {
+    if (!state.terminalId) {
+      return;
+    }
+    SESSION_CACHE.set(state.terminalId, state);
+  }, [state]);
 
   // Subscribe to agent events from main process.
   useEffect(() => {
