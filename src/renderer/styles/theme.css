@@ -619,8 +619,9 @@ input {
 
 .terminal-tabbar {
   display: flex;
-  gap: 6px;
-  padding: 6px 12px 8px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-0);
   overflow-x: auto;
 }
@@ -628,17 +629,17 @@ input {
 .terminal-tab {
   background: var(--surface-2);
   border: 1px solid var(--border-0);
+  border-bottom: 0;
   color: var(--text-1);
-  border-radius: 999px;
-  padding: 4px 9px;
+  border-radius: 8px 8px 0 0;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 0.76rem;
-  max-width: 260px;
-  min-height: 26px;
+  max-width: 280px;
+  min-height: 34px;
 }
-
 .terminal-tab-provider-icon {
   width: 12px;
   height: 12px;
@@ -653,7 +654,7 @@ input {
 }
 
 .terminal-tab.active {
-  background: var(--accent-soft);
+  background: var(--surface-1);
   border-color: var(--accent-0);
   color: var(--text-0);
 }
