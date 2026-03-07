@@ -275,14 +275,15 @@ export class AgentSessionManager {
 
   private async openCodex(input: AgentSessionOpenInput): Promise<void> {
     const env = buildEnvWithFullPath(process.env);
-    const codexBin = findExecutable("codex", env);
+    const configuredCodexBin = process.env.SHIPDECK_CODEX_BINARY_PATH?.trim() || process.env.CODEX_BINARY_PATH?.trim() || null;
+    const codexBin = configuredCodexBin && configuredCodexBin.length > 0 ? configuredCodexBin : findExecutable("codex", env);
 
     if (!codexBin) {
       this.emit({
         kind: "session.error",
         terminalId: input.terminalId,
         sessionId: input.sessionId,
-        message: `Codex binary not found. Searched PATH: ${env.PATH ?? "(empty)"}. Make sure 'codex' is installed and try opening a terminal to confirm 'which codex'.`
+        message: `Codex binary not found. Searched PATH: ${env.PATH ?? "(empty)"}. You can set SHIPDECK_CODEX_BINARY_PATH to an absolute codex binary path.`
       });
       this.win.webContents.send(channels.terminalsOnExit, { terminalId: input.terminalId, code: 1, signal: 0 });
       return;
@@ -291,7 +292,8 @@ export class AgentSessionManager {
     const child = spawn(codexBin, ["app-server"], {
       cwd: input.cwd,
       env,
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: process.platform === "win32"
     });
 
     const session: RunningSession = {
@@ -660,7 +662,8 @@ export class AgentSessionManager {
 
   private async sendClaudeTurn(session: RunningSession & RunningClaudeSession, text: string): Promise<string> {
     const env = buildEnvWithFullPath(process.env);
-    const claudeBin = findExecutable("claude", env) ?? findExecutable("claude-code", env);
+    const configuredClaudeBin = process.env.SHIPDECK_CLAUDE_BINARY_PATH?.trim() || process.env.CLAUDE_BINARY_PATH?.trim() || null;
+    const claudeBin = (configuredClaudeBin && configuredClaudeBin.length > 0 ? configuredClaudeBin : null) ?? findExecutable("claude", env) ?? findExecutable("claude-code", env);
     const npxBin = findExecutable("npx", env);
 
     let runtimeBin: string | null = null;
@@ -695,7 +698,8 @@ export class AgentSessionManager {
     const child = spawn(runtimeBin, args, {
       cwd: session.cwd,
       env,
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32"
     });
     session.activeChild = child;
 
