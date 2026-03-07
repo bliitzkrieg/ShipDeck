@@ -85,6 +85,22 @@ function columnExists(instance: Database.Database, tableName: string, columnName
   return rows.some((row) => String(row.name) === columnName);
 }
 
+function reconcileSessionColumns(instance: Database.Database): void {
+  if (!tableExists(instance, "sessions")) {
+    return;
+  }
+
+  if (!columnExists(instance, "sessions", "runtime_mode")) {
+    instance.exec("ALTER TABLE sessions ADD COLUMN runtime_mode TEXT NOT NULL DEFAULT 'full-access'");
+  }
+  if (!columnExists(instance, "sessions", "interaction_mode")) {
+    instance.exec("ALTER TABLE sessions ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'default'");
+  }
+
+  instance.exec("UPDATE sessions SET runtime_mode = 'full-access' WHERE runtime_mode IS NULL");
+  instance.exec("UPDATE sessions SET interaction_mode = 'default' WHERE interaction_mode IS NULL");
+}
+
 function migrateToV1(instance: Database.Database): void {
   instance.exec("BEGIN IMMEDIATE TRANSACTION");
   try {
@@ -254,6 +270,7 @@ export function initDb(): Database.Database {
   } else {
     instance.exec(schemaSql);
   }
+  reconcileSessionColumns(instance);
 
   db = instance;
   return instance;

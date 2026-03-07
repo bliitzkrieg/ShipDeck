@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { BrowserWindow } from "electron";
 import { channels } from "../../shared/ipc";
 import type { SessionProvider } from "../../shared/types";
@@ -117,6 +117,41 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+interface SpawnSpec {
+  command: string;
+  args: string[];
+  display: string;
+}
+
+function commandExists(command: string): boolean {
+  const checker = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(checker, [command], { stdio: "ignore" });
+  return result.status === 0;
+}
+
+function resolveCodexSpawnSpec(): SpawnSpec {
+  const candidates: SpawnSpec[] =
+    process.platform === "win32"
+      ? [
+          { command: "codex.cmd", args: ["app-server"], display: "codex.cmd app-server" },
+          { command: "codex.exe", args: ["app-server"], display: "codex.exe app-server" },
+          { command: "codex", args: ["app-server"], display: "codex app-server" }
+        ]
+      : [{ command: "codex", args: ["app-server"], display: "codex app-server" }];
+
+  for (const candidate of candidates) {
+    if (commandExists(candidate.command)) {
+      return candidate;
+    }
+  }
+
+  return {
+    command: "npx",
+    args: ["--yes", "@openai/codex", "app-server"],
+    display: "npx --yes @openai/codex app-server"
+  };
+}
+
 export class AgentSessionManager {
   private readonly sessions = new Map<string, RunningAgentSession>();
 
@@ -220,7 +255,8 @@ export class AgentSessionManager {
   }
 
   private async openCodex(input: AgentSessionOpenInput): Promise<void> {
-    const child = spawn("codex", ["app-server"], {
+    const spawnSpec = resolveCodexSpawnSpec();
+    const child = spawn(spawnSpec.command, spawnSpec.args, {
       cwd: input.cwd,
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -246,6 +282,20 @@ export class AgentSessionManager {
     };
 
     this.sessions.set(input.terminalId, session);
+    let isClosed = false;
+
+    const closeSession = (code: number, signal: number): void => {
+      if (isClosed) {
+        return;
+      }
+      isClosed = true;
+      this.sessions.delete(input.terminalId);
+      this.win.webContents.send(channels.terminalsOnExit, {
+        terminalId: input.terminalId,
+        code,
+        signal
+      });
+    };
 
     let stdoutBuffer = "";
     child.stdout.on("data", (chunk: Buffer) => {
@@ -268,6 +318,15 @@ export class AgentSessionManager {
       }
     });
 
+    child.on("error", (error) => {
+      const message =
+        error.code === "ENOENT"
+          ? `Failed to start Codex (${spawnSpec.display} not found). Install Codex CLI or ensure it is on PATH.`
+          : `Failed to start Codex: ${error.message}`;
+      this.emitData(input.terminalId, `\r\n❌ ${message}\r\n`);
+      closeSession(1, 0);
+    });
+
     child.on("exit", (code, signal) => {
       for (const pending of session.pending.values()) {
         clearTimeout(pending.timeout);
@@ -280,15 +339,10 @@ export class AgentSessionManager {
         session.currentTurn = null;
       }
 
-      this.sessions.delete(input.terminalId);
-      this.win.webContents.send(channels.terminalsOnExit, {
-        terminalId: input.terminalId,
-        code: code ?? 0,
-        signal: signal ? 1 : 0
-      });
+      closeSession(code ?? 0, signal ? 1 : 0);
     });
 
-    this.emitData(input.terminalId, "🚀 Starting Codex app-server session...\r\n");
+    this.emitData(input.terminalId, `🚀 Starting Codex app-server session (${spawnSpec.display})...\r\n`);
 
     await this.codexRequest(session, "initialize", {
       clientInfo: { name: "shipdeck", title: "ShipDeck", version: "0.1.0" },
@@ -683,6 +737,11 @@ export class AgentSessionManager {
         if (text.trim()) {
           this.emitData(session.terminalId, `\r\n[stderr] ${text}\r\n`);
         }
+      });
+
+      child.on("error", (error) => {
+        session.activeChild = null;
+        reject(new Error(`Failed to launch Claude command: ${error.message}`));
       });
 
       child.on("exit", (code, signal) => {
