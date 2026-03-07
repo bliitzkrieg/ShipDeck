@@ -121,6 +121,7 @@ interface SpawnSpec {
   command: string;
   args: string[];
   display: string;
+  shell?: boolean;
 }
 
 function commandExists(command: string): boolean {
@@ -130,19 +131,26 @@ function commandExists(command: string): boolean {
 }
 
 function resolveCodexSpawnSpec(): SpawnSpec {
-  const candidates: SpawnSpec[] =
-    process.platform === "win32"
-      ? [
-          { command: "codex.cmd", args: ["app-server"], display: "codex.cmd app-server" },
-          { command: "codex.exe", args: ["app-server"], display: "codex.exe app-server" },
-          { command: "codex", args: ["app-server"], display: "codex app-server" }
-        ]
-      : [{ command: "codex", args: ["app-server"], display: "codex app-server" }];
-
-  for (const candidate of candidates) {
-    if (commandExists(candidate.command)) {
-      return candidate;
+  if (process.platform === "win32") {
+    if (commandExists("codex")) {
+      return {
+        command: "cmd.exe",
+        args: ["/d", "/s", "/c", "codex app-server"],
+        display: "codex app-server",
+        shell: false
+      };
     }
+
+    return {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", "npx --yes @openai/codex app-server"],
+      display: "npx --yes @openai/codex app-server",
+      shell: false
+    };
+  }
+
+  if (commandExists("codex")) {
+    return { command: "codex", args: ["app-server"], display: "codex app-server" };
   }
 
   return {
@@ -256,10 +264,23 @@ export class AgentSessionManager {
 
   private async openCodex(input: AgentSessionOpenInput): Promise<void> {
     const spawnSpec = resolveCodexSpawnSpec();
-    const child = spawn(spawnSpec.command, spawnSpec.args, {
-      cwd: input.cwd,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = spawn(spawnSpec.command, spawnSpec.args, {
+        cwd: input.cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        shell: spawnSpec.shell ?? false
+      });
+    } catch (error) {
+      const message = `Failed to start Codex (${spawnSpec.display}): ${error instanceof Error ? error.message : String(error)}`;
+      this.emitData(input.terminalId, `\r\n❌ ${message}\r\n`);
+      this.win.webContents.send(channels.terminalsOnExit, {
+        terminalId: input.terminalId,
+        code: 1,
+        signal: 0
+      });
+      return;
+    }
 
     const session: RunningAgentSession = {
       type: "codex",
