@@ -79,6 +79,9 @@ function asString(v: unknown): string | undefined {
 }
 
 function getShellPath(env: NodeJS.ProcessEnv): string {
+  if (process.platform === "win32") {
+    return env.PATH ?? "";
+  }
   const shell = env.SHELL || "/bin/bash";
   // Ask the login shell to print its PATH and nothing else.
   const result = spawnSync(shell, ["-lc", "echo $PATH"], {
@@ -92,50 +95,98 @@ function getShellPath(env: NodeJS.ProcessEnv): string {
 
 function buildEnvWithFullPath(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const shellPath = getShellPath(baseEnv);
-  const home = baseEnv.HOME ?? "";
-  const extras = [
-    `${home}/.npm-global/bin`,
-    `${home}/.local/bin`,
-    `${home}/.nvm/versions/node/current/bin`,
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-    "/opt/homebrew/sbin",
-    "/usr/bin",
-    "/bin"
-  ].filter(Boolean);
+  const delimiter = path.delimiter;
 
-  const merged = [...extras, ...shellPath.split(":")]
+  const home = process.platform === "win32" ? baseEnv.USERPROFILE ?? "" : baseEnv.HOME ?? "";
+  const extras = process.platform === "win32"
+    ? [
+        `${home}\\.npm-global\\bin`,
+        `${home}\\AppData\\Roaming\\npm`,
+        `${home}\\.local\\bin`,
+        `${home}\\scoop\\shims`
+      ]
+    : [
+        `${home}/.npm-global/bin`,
+        `${home}/.local/bin`,
+        `${home}/.nvm/versions/node/current/bin`,
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/bin",
+        "/bin"
+      ];
+
+  const merged = [...extras.filter(Boolean), ...shellPath.split(delimiter)]
+    .map((p) => p.trim())
     .filter((p, i, arr) => p.length > 0 && arr.indexOf(p) === i)
-    .join(":");
+    .join(delimiter);
 
   return { ...baseEnv, PATH: merged };
 }
 
 function findExecutable(command: string, env: NodeJS.ProcessEnv): string | null {
-  // Check if it's already an absolute path.
-  if (path.isAbsolute(command)) {
+  const delimiter = path.delimiter;
+
+  const checkFile = (candidate: string): string | null => {
     try {
-      accessSync(command, fsConstants.X_OK);
-      return command;
+      if (process.platform === "win32") {
+        // On Windows, executability is extension-based.
+        return existsSync(candidate) ? candidate : null;
+      }
+      accessSync(candidate, fsConstants.X_OK);
+      return candidate;
     } catch {
       return null;
     }
+  };
+
+  const windowsCandidates = (base: string): string[] => {
+    if (process.platform !== "win32") {
+      return [base];
+    }
+    const ext = path.extname(base).toLowerCase();
+    if (ext) {
+      return [base];
+    }
+    return [`${base}.exe`, `${base}.cmd`, `${base}.bat`, base];
+  };
+
+  // Check if it's already an absolute path.
+  if (path.isAbsolute(command)) {
+    for (const candidate of windowsCandidates(command)) {
+      const found = checkFile(candidate);
+      if (found) return found;
+    }
+    return null;
   }
 
   // Search PATH entries.
-  const dirs = (env.PATH ?? "").split(":");
+  const dirs = (env.PATH ?? "").split(delimiter);
   for (const dir of dirs) {
     if (!dir) continue;
-    const full = path.join(dir, command);
-    try {
-      accessSync(full, fsConstants.X_OK);
-      return full;
-    } catch {
-      // not found here
+    const base = path.join(dir, command);
+    for (const candidate of windowsCandidates(base)) {
+      const found = checkFile(candidate);
+      if (found) {
+        return found;
+      }
     }
   }
 
-  // Ask the shell as a last resort (non-interactive to avoid hangs).
+  // Ask the shell as a last resort.
+  if (process.platform === "win32") {
+    const result = spawnSync("where", [command], {
+      env,
+      encoding: "utf8",
+      timeout: 5000
+    });
+    const found = (result.stdout ?? "").split(/\r?\n/).map((line) => line.trim()).find((line) => line.length > 0);
+    if (found && existsSync(found)) {
+      return found;
+    }
+    return null;
+  }
+
   const shell = env.SHELL || "/bin/bash";
   const result = spawnSync(shell, ["-lc", `command -v ${command} 2>/dev/null || true`], {
     env,
@@ -143,7 +194,7 @@ function findExecutable(command: string, env: NodeJS.ProcessEnv): string | null 
     timeout: 5000
   });
   const found = (result.stdout ?? "").trim().split(/\r?\n/).pop()?.trim();
-  if (found && found.length > 0 && !found.includes(" ") && existsSync(found)) {
+  if (found && found.length > 0 && existsSync(found)) {
     return found;
   }
 
