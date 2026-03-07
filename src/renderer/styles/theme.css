@@ -1245,7 +1245,7 @@ input {
   position: absolute;
   right: 10px;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(calc(-50% - 3px));
   display: inline-flex;
   align-items: center;
   gap: 8px;
