@@ -53,6 +53,18 @@ export const createTerminalInputSchema = z.object({
   kind: z.enum(["server", "shell"])
 });
 
+export const openTerminalInputSchema = z.object({
+  terminalId: idSchema,
+  projectId: idSchema,
+  cwd: z.string().min(1),
+  kind: z.enum(["server", "shell"]),
+  command: z.string().min(1).optional(),
+  sessionId: idSchema.optional(),
+  sessionProvider: sessionProviderSchema.optional(),
+  cliSessionName: z.string().min(1).optional(),
+  sessionMode: z.enum(["create", "restore"]).optional()
+});
+
 export const terminalIdInputSchema = z.object({
   terminalId: idSchema
 });

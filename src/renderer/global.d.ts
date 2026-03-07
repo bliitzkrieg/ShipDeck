@@ -49,6 +49,10 @@ declare global {
           cwd: string;
           kind: "server" | "shell";
           command?: string;
+          sessionId?: string;
+          sessionProvider?: Session["provider"];
+          cliSessionName?: string;
+          sessionMode?: "create" | "restore";
         }): Promise<{ ok: true }>;
         write(input: { terminalId: string; data: string }): Promise<{ ok: true }>;
         writeInput(input: { terminalId: string; data: string }): void;

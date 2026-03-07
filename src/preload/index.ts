@@ -63,6 +63,10 @@ const api = {
       cwd: string;
       kind: "server" | "shell";
       command?: string;
+      sessionId?: string;
+      sessionProvider?: Session["provider"];
+      cliSessionName?: string;
+      sessionMode?: "create" | "restore";
     }): Promise<{ ok: true }> => ipcRenderer.invoke(channels.terminalsOpen, input),
     write: (input: { terminalId: string; data: string }): Promise<{ ok: true }> =>
       ipcRenderer.invoke(channels.terminalsWrite, input),

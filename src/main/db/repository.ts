@@ -149,6 +149,14 @@ export class Repository {
     return this.getSessionById(input.sessionId);
   }
 
+  updateSessionCliSessionName(input: { sessionId: string; cliSessionName: string }): Session {
+    const ts = nowTs();
+    this.db
+      .prepare("UPDATE sessions SET cli_session_name = ?, updated_at = ? WHERE id = ?")
+      .run(input.cliSessionName, ts, input.sessionId);
+    return this.getSessionById(input.sessionId);
+  }
+
   deleteSession(sessionId: string): void {
     const session = this.getSessionById(sessionId);
     const ts = nowTs();

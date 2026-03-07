@@ -9,6 +9,7 @@ import {
   createSessionInputSchema,
   createTerminalInputSchema,
   listMessagesInputSchema,
+  openTerminalInputSchema,
   renameSessionInputSchema,
   setDefaultSessionProviderInputSchema,
   setWebTargetInputSchema,
@@ -22,6 +23,7 @@ import { channels } from "../shared/ipc";
 import { initDb } from "./db";
 import { Repository } from "./db/repository";
 import { PtyManager } from "./pty/manager";
+import { AgentSessionManager } from "./agent/sessionManager";
 import { WebViewManager } from "./webview/manager";
 
 let mainWindow: BrowserWindow | null = null;
@@ -171,6 +173,13 @@ function registerIpc(win: BrowserWindow): void {
       // Ignore navigation errors; renderer still receives event updates.
     });
   });
+  const agentSessions = new AgentSessionManager(win, ({ sessionId, cliSessionName }) => {
+    try {
+      repo.updateSessionCliSessionName({ sessionId, cliSessionName });
+    } catch (error) {
+      console.warn("Failed to persist provider session id:", error);
+    }
+  });
 
   win.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") {
@@ -294,13 +303,36 @@ function registerIpc(win: BrowserWindow): void {
     return repo.createTerminal(input);
   });
 
-  ipcMain.handle(channels.terminalsOpen, (_event, rawInput: { terminalId: string; projectId: string; cwd: string; kind: "server" | "shell"; command?: string }) => {
-    pty.open(rawInput);
+  ipcMain.handle(channels.terminalsOpen, async (_event, rawInput) => {
+    const input = openTerminalInputSchema.parse(rawInput);
+    if (
+      input.kind === "shell" &&
+      input.sessionId &&
+      input.sessionProvider &&
+      input.cliSessionName &&
+      input.sessionMode
+    ) {
+      await agentSessions.open({
+        terminalId: input.terminalId,
+        sessionId: input.sessionId,
+        provider: input.sessionProvider,
+        cliSessionName: input.cliSessionName,
+        cwd: input.cwd,
+        mode: input.sessionMode
+      });
+      return { ok: true };
+    }
+
+    pty.open(input);
     return { ok: true };
   });
 
   ipcMain.handle(channels.terminalsWrite, (_event, rawInput) => {
     const input = terminalWriteInputSchema.parse(rawInput);
+    if (agentSessions.isManaged(input.terminalId)) {
+      agentSessions.write(input.terminalId, input.data);
+      return { ok: true };
+    }
     pty.write(input.terminalId, input.data);
     return { ok: true };
   });
@@ -308,6 +340,10 @@ function registerIpc(win: BrowserWindow): void {
   ipcMain.on(channels.terminalsWriteInput, (_event, rawInput) => {
     try {
       const input = terminalWriteInputSchema.parse(rawInput);
+      if (agentSessions.isManaged(input.terminalId)) {
+        agentSessions.write(input.terminalId, input.data);
+        return;
+      }
       pty.write(input.terminalId, input.data);
     } catch {
       // Ignore malformed fire-and-forget input payloads.
@@ -316,12 +352,20 @@ function registerIpc(win: BrowserWindow): void {
 
   ipcMain.handle(channels.terminalsResize, (_event, rawInput) => {
     const input = terminalResizeInputSchema.parse(rawInput);
+    if (agentSessions.isManaged(input.terminalId)) {
+      agentSessions.resize(input.terminalId, input.cols, input.rows);
+      return { ok: true };
+    }
     pty.resize(input.terminalId, input.cols, input.rows);
     return { ok: true };
   });
 
   ipcMain.handle(channels.terminalsKill, (_event, rawInput) => {
     const input = terminalIdInputSchema.parse(rawInput);
+    if (agentSessions.isManaged(input.terminalId)) {
+      agentSessions.kill(input.terminalId);
+      return { ok: true };
+    }
     pty.kill(input.terminalId);
     return { ok: true };
   });
