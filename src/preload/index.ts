@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   ActivatedContext,
-  AgentEvent,
   AppPreferences,
   Message,
   MessagePage,
@@ -64,8 +63,6 @@ const api = {
       cwd: string;
       kind: "server" | "shell";
       command?: string;
-      sessionId?: string;
-      sessionProvider?: string;
     }): Promise<{ ok: true }> => ipcRenderer.invoke(channels.terminalsOpen, input),
     write: (input: { terminalId: string; data: string }): Promise<{ ok: true }> =>
       ipcRenderer.invoke(channels.terminalsWrite, input),
@@ -124,19 +121,6 @@ const api = {
     minimize: (): Promise<{ ok: true }> => ipcRenderer.invoke(channels.appWindowMinimize),
     toggleMaximize: (): Promise<{ ok: true }> => ipcRenderer.invoke(channels.appWindowToggleMaximize),
     close: (): Promise<{ ok: true }> => ipcRenderer.invoke(channels.appWindowClose)
-  },
-  agent: {
-    sendTurn: (input: { terminalId: string; text: string }): Promise<{ ok: true }> =>
-      ipcRenderer.invoke(channels.agentSendTurn, input),
-    interrupt: (input: { terminalId: string }): Promise<{ ok: true }> =>
-      ipcRenderer.invoke(channels.agentInterrupt, input),
-    approve: (input: { terminalId: string; requestId: string; decision: "accept" | "acceptForSession" | "decline" }): Promise<{ ok: true }> =>
-      ipcRenderer.invoke(channels.agentApprove, input),
-    onEvent: (handler: (event: AgentEvent) => void): Unsubscribe => {
-      const listener = (_e: Electron.IpcRendererEvent, event: AgentEvent) => handler(event);
-      ipcRenderer.on(channels.agentOnEvent, listener);
-      return () => ipcRenderer.removeListener(channels.agentOnEvent, listener);
-    }
   }
 };
 

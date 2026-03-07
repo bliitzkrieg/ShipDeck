@@ -249,15 +249,6 @@ export function App(): JSX.Element {
     onClearDefaultProvider
   };
 
-  const activeSession = useMemo((): import("./app/types").WorkspacePanelModel["activeSession"] => {
-    const tabKey = activeWorkspace.activeTerminalTabKey;
-    if (!tabKey?.startsWith("session:") || !activeProjectId) {
-      return null;
-    }
-    const sessionId = tabKey.slice("session:".length);
-    return (sessionsByProject[activeProjectId] ?? []).find((s) => s.id === sessionId) ?? null;
-  }, [activeWorkspace.activeTerminalTabKey, activeProjectId, sessionsByProject]);
-
   const workspaceModel: WorkspacePanelModel = {
     isServerRunning: activeWorkspace.isServerRunning,
     previewSplitPercent,
@@ -266,8 +257,7 @@ export function App(): JSX.Element {
     terminalTabs,
     activeTerminalTabKey: activeWorkspace.activeTerminalTabKey,
     activeProjectId,
-    activeTerminalId: activeWorkspace.activeTerminalId,
-    activeSession
+    activeTerminalId: activeWorkspace.activeTerminalId
   };
 
   const workspaceActions: WorkspacePanelActions = {

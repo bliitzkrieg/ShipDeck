@@ -22,7 +22,6 @@ import { channels } from "../shared/ipc";
 import { initDb } from "./db";
 import { Repository } from "./db/repository";
 import { PtyManager } from "./pty/manager";
-import { AgentSessionManager } from "./agent/sessionManager";
 import { WebViewManager } from "./webview/manager";
 
 let mainWindow: BrowserWindow | null = null;
@@ -156,22 +155,6 @@ function registerIpc(win: BrowserWindow): void {
   const db = initDb();
   const repo = new Repository(db);
   const web = new WebViewManager(win);
-  const agentSessions = new AgentSessionManager(win, {
-    onSessionNameResolved: ({ sessionId, cliSessionName }) => {
-      try {
-        repo.updateSessionCliSessionName({ sessionId, cliSessionName });
-      } catch (err) {
-        console.warn("Failed to persist provider session id:", err);
-      }
-    },
-    onMessagePersist: ({ sessionId, role, content }) => {
-      try {
-        repo.createMessage({ sessionId, role, content });
-      } catch (err) {
-        console.warn("Failed to persist agent message:", err);
-      }
-    }
-  });
   const pty = new PtyManager(win, ({ projectId, port }) => {
     const project = repo.getProjectById(projectId);
     const targetPort = project.defaultPort ?? port;
@@ -311,39 +294,21 @@ function registerIpc(win: BrowserWindow): void {
     return repo.createTerminal(input);
   });
 
-  ipcMain.handle(channels.terminalsOpen, (_event, rawInput: { terminalId: string; projectId: string; cwd: string; kind: "server" | "shell"; command?: string; sessionId?: string; sessionProvider?: string }) => {
-    // If this terminal is for a structured agent session, use AgentSessionManager.
-    const { sessionId, sessionProvider } = rawInput;
-    if (sessionId && (sessionProvider === "codex" || sessionProvider === "claude" || sessionProvider === "opencode")) {
-      const session = repo.getSessionById(sessionId);
-      void agentSessions.open({
-        terminalId: rawInput.terminalId,
-        sessionId,
-        provider: sessionProvider,
-        cliSessionName: session.cliSessionName,
-        cwd: rawInput.cwd,
-        mode: session.cliSessionName && session.cliSessionName.includes("-") ? "create" : "restore"
-      });
-      return { ok: true };
-    }
+  ipcMain.handle(channels.terminalsOpen, (_event, rawInput: { terminalId: string; projectId: string; cwd: string; kind: "server" | "shell"; command?: string }) => {
     pty.open(rawInput);
     return { ok: true };
   });
 
   ipcMain.handle(channels.terminalsWrite, (_event, rawInput) => {
     const input = terminalWriteInputSchema.parse(rawInput);
-    if (!agentSessions.isManaged(input.terminalId)) {
-      pty.write(input.terminalId, input.data);
-    }
+    pty.write(input.terminalId, input.data);
     return { ok: true };
   });
 
   ipcMain.on(channels.terminalsWriteInput, (_event, rawInput) => {
     try {
       const input = terminalWriteInputSchema.parse(rawInput);
-      if (!agentSessions.isManaged(input.terminalId)) {
-        pty.write(input.terminalId, input.data);
-      }
+      pty.write(input.terminalId, input.data);
     } catch {
       // Ignore malformed fire-and-forget input payloads.
     }
@@ -351,35 +316,13 @@ function registerIpc(win: BrowserWindow): void {
 
   ipcMain.handle(channels.terminalsResize, (_event, rawInput) => {
     const input = terminalResizeInputSchema.parse(rawInput);
-    if (!agentSessions.isManaged(input.terminalId)) {
-      pty.resize(input.terminalId, input.cols, input.rows);
-    }
+    pty.resize(input.terminalId, input.cols, input.rows);
     return { ok: true };
   });
 
   ipcMain.handle(channels.terminalsKill, (_event, rawInput) => {
     const input = terminalIdInputSchema.parse(rawInput);
-    if (agentSessions.isManaged(input.terminalId)) {
-      agentSessions.kill(input.terminalId);
-    } else {
-      pty.kill(input.terminalId);
-    }
-    return { ok: true };
-  });
-
-  // ─── Structured agent session commands ────────────────────────────────────
-  ipcMain.handle(channels.agentSendTurn, async (_event, rawInput: { terminalId: string; text: string }) => {
-    await agentSessions.sendTurn(rawInput.terminalId, rawInput.text);
-    return { ok: true };
-  });
-
-  ipcMain.handle(channels.agentInterrupt, async (_event, rawInput: { terminalId: string }) => {
-    await agentSessions.interrupt(rawInput.terminalId);
-    return { ok: true };
-  });
-
-  ipcMain.handle(channels.agentApprove, (_event, rawInput: { terminalId: string; requestId: string; decision: "accept" | "acceptForSession" | "decline" }) => {
-    agentSessions.approve(rawInput.terminalId, rawInput.requestId, rawInput.decision);
+    pty.kill(input.terminalId);
     return { ok: true };
   });
 

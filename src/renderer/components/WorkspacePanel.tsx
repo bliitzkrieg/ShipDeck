@@ -1,6 +1,5 @@
 import { X } from "lucide-react";
 import type { WorkspacePanelActions, WorkspacePanelModel } from "../app/types";
-import { SessionChatPanel } from "./SessionChatPanel";
 import { TerminalPanel } from "./TerminalPanel";
 
 interface WorkspacePanelProps {
@@ -19,13 +18,8 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
     terminalTabs,
     activeTerminalTabKey,
     activeProjectId,
-    activeTerminalId,
-    activeSession
+    activeTerminalId
   } = model;
-
-  // Determine which panel type to show.
-  const isSessionTab = activeTerminalTabKey?.startsWith("session:") ?? false;
-  const showChatPanel = isSessionTab && activeSession !== null;
 
   return (
     <main
@@ -95,11 +89,6 @@ export function WorkspacePanel({ mainColumnRef, webviewPanelRef, model, actions 
                 <p>Select a project and create a session from the sidebar to open terminal tabs here.</p>
               </div>
             </div>
-          ) : showChatPanel ? (
-            <SessionChatPanel
-              terminalId={activeTerminalId}
-              session={activeSession}
-            />
           ) : (
             <TerminalPanel activeTerminalId={activeTerminalId} />
           )}

@@ -1,6 +1,5 @@
 import type {
   ActivatedContext,
-  AgentEvent,
   AppPreferences,
   Message,
   MessagePage,
@@ -50,8 +49,6 @@ declare global {
           cwd: string;
           kind: "server" | "shell";
           command?: string;
-          sessionId?: string;
-          sessionProvider?: string;
         }): Promise<{ ok: true }>;
         write(input: { terminalId: string; data: string }): Promise<{ ok: true }>;
         writeInput(input: { terminalId: string; data: string }): void;
@@ -85,12 +82,6 @@ declare global {
         minimize(): Promise<{ ok: true }>;
         toggleMaximize(): Promise<{ ok: true }>;
         close(): Promise<{ ok: true }>;
-      };
-      agent: {
-        sendTurn(input: { terminalId: string; text: string }): Promise<{ ok: true }>;
-        interrupt(input: { terminalId: string }): Promise<{ ok: true }>;
-        approve(input: { terminalId: string; requestId: string; decision: "accept" | "acceptForSession" | "decline" }): Promise<{ ok: true }>;
-        onEvent(handler: (event: AgentEvent) => void): () => void;
       };
     };
   }

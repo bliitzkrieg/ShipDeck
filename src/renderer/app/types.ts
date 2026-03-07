@@ -56,8 +56,6 @@ export interface WorkspacePanelModel {
   activeTerminalTabKey: string | null;
   activeProjectId: string | null;
   activeTerminalId: string | null;
-  /** The full Session object for the currently visible session tab, if any. */
-  activeSession: Session | null;
 }
 
 export interface WorkspacePanelActions {
