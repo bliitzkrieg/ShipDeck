@@ -98,7 +98,17 @@ function withAugmentedPath(env: NodeJS.ProcessEnv = process.env): NodeJS.Process
   };
 }
 
-function resolveExecutable(command: string, env: NodeJS.ProcessEnv): string {
+function resolveInLoginShell(command: string, env: NodeJS.ProcessEnv): string | null {
+  const shell = env.SHELL || "/bin/bash";
+  const lookup = spawnSync(shell, ["-ilc", `command -v ${command} || true`], {
+    env,
+    encoding: "utf8"
+  });
+  const found = (lookup.stdout ?? "").trim().split(/\r?\n/).pop()?.trim();
+  return found && found.length > 0 ? found : null;
+}
+
+function resolveExecutable(command: string, env: NodeJS.ProcessEnv): string | null {
   const direct = spawnSync(command, ["--version"], {
     env,
     stdio: "ignore"
@@ -106,6 +116,11 @@ function resolveExecutable(command: string, env: NodeJS.ProcessEnv): string {
 
   if (!direct.error) {
     return command;
+  }
+
+  const viaLoginShell = resolveInLoginShell(command, env);
+  if (viaLoginShell) {
+    return viaLoginShell;
   }
 
   const shellLookup = spawnSync("bash", ["-lc", `command -v ${command}`], {
@@ -118,7 +133,7 @@ function resolveExecutable(command: string, env: NodeJS.ProcessEnv): string {
     return found;
   }
 
-  return command;
+  return null;
 }
 
 export class AgentSessionManager {
@@ -247,6 +262,18 @@ export class AgentSessionManager {
   private async openCodex(input: AgentSessionOpenInput): Promise<void> {
     const env = withAugmentedPath(process.env);
     const codexBin = resolveExecutable("codex", env);
+
+    if (!codexBin) {
+      this.emit({
+        kind: "session.error",
+        terminalId: input.terminalId,
+        sessionId: input.sessionId,
+        message: "Codex binary not found. Electron couldn't resolve your shell PATH."
+      });
+      this.win.webContents.send(channels.terminalsOnExit, { terminalId: input.terminalId, code: 1, signal: 0 });
+      return;
+    }
+
     const child = spawn(codexBin, ["app-server"], {
       cwd: input.cwd,
       env,
@@ -283,6 +310,15 @@ export class AgentSessionManager {
       this.win.webContents.send(channels.terminalsOnExit, { terminalId: input.terminalId, code, signal: 0 });
     };
 
+    let startupStderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      startupStderr += text;
+      if (startupStderr.length > 4000) {
+        startupStderr = startupStderr.slice(startupStderr.length - 4000);
+      }
+    });
+
     let stdoutBuf = "";
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBuf += chunk.toString("utf8");
@@ -307,7 +343,7 @@ export class AgentSessionManager {
       }
       const message =
         (err as NodeJS.ErrnoException).code === "ENOENT"
-          ? "Codex CLI not found in PATH. Install Codex CLI on this machine and restart ShipDeck."
+          ? `Codex CLI not found in PATH (resolved binary: ${codexBin}).`
           : `Failed to start Codex app-server: ${err.message}`;
       this.emit({ kind: "session.error", terminalId: input.terminalId, sessionId: input.sessionId, message });
       closeSession(1);
@@ -355,7 +391,14 @@ export class AgentSessionManager {
       this.emit({ kind: "session.ready", terminalId: input.terminalId, sessionId: input.sessionId, provider: "codex" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.emit({ kind: "session.error", terminalId: input.terminalId, sessionId: input.sessionId, message: `Codex startup failed: ${message}` });
+      const stderrSummary = startupStderr.trim().split(/\r?\n/).slice(-6).join(" | ");
+      const detail = stderrSummary ? ` | stderr: ${stderrSummary}` : "";
+      this.emit({
+        kind: "session.error",
+        terminalId: input.terminalId,
+        sessionId: input.sessionId,
+        message: `Codex startup failed (bin: ${codexBin}): ${message}${detail}`
+      });
       if (!child.killed) {
         child.kill();
       }
@@ -602,7 +645,24 @@ export class AgentSessionManager {
   }
 
   private async sendClaudeTurn(session: RunningSession & RunningClaudeSession, text: string): Promise<string> {
-    const args = ["--yes", "@anthropic-ai/claude-code", "-p", "--verbose", "--output-format", "stream-json"];
+    const env = withAugmentedPath(process.env);
+    const claudeBin = resolveExecutable("claude", env) ?? resolveExecutable("claude-code", env);
+    const npxBin = resolveExecutable("npx", env);
+
+    let runtimeBin: string | null = null;
+    let args: string[] = [];
+
+    if (claudeBin) {
+      runtimeBin = claudeBin;
+      args = ["-p", "--verbose", "--output-format", "stream-json"];
+    } else if (npxBin) {
+      runtimeBin = npxBin;
+      args = ["--yes", "@anthropic-ai/claude-code", "-p", "--verbose", "--output-format", "stream-json"];
+    }
+
+    if (!runtimeBin) {
+      throw new Error("Claude CLI not found (checked: claude, claude-code, npx @anthropic-ai/claude-code).");
+    }
 
     if (session.claudeSessionId) {
       args.push("--resume", session.claudeSessionId);
@@ -618,9 +678,7 @@ export class AgentSessionManager {
 
     args.push(text);
 
-    const env = withAugmentedPath(process.env);
-    const npxBin = resolveExecutable("npx", env);
-    const child = spawn(npxBin, args, {
+    const child = spawn(runtimeBin, args, {
       cwd: session.cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"]
@@ -631,6 +689,8 @@ export class AgentSessionManager {
 
     await new Promise<void>((resolve, reject) => {
       let buf = "";
+      let stderrBuf = "";
+
       child.stdout.on("data", (chunk: Buffer) => {
         buf += chunk.toString("utf8");
         const lines = buf.split(/\r?\n/g);
@@ -643,11 +703,19 @@ export class AgentSessionManager {
         }
       });
 
+      child.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString("utf8");
+        stderrBuf += text;
+        if (stderrBuf.length > 4000) {
+          stderrBuf = stderrBuf.slice(stderrBuf.length - 4000);
+        }
+      });
+
       child.on("error", (err) => {
         session.activeChild = null;
         const message =
           (err as NodeJS.ErrnoException).code === "ENOENT"
-            ? "npx/Claude CLI not found in PATH. Install Claude Code CLI and restart ShipDeck."
+            ? `Claude runtime not found (bin: ${runtimeBin}).`
             : `Failed to start Claude runtime: ${err.message}`;
         reject(new Error(message));
       });
@@ -662,7 +730,9 @@ export class AgentSessionManager {
           resolve();
           return;
         }
-        reject(new Error(`Claude exited with code ${code ?? 1}`));
+        const stderrSummary = stderrBuf.trim().split(/\r?\n/).slice(-6).join(" | ");
+        const detail = stderrSummary ? ` | stderr: ${stderrSummary}` : "";
+        reject(new Error(`Claude exited with code ${code ?? 1} (bin: ${runtimeBin})${detail}`));
       });
     });
 
