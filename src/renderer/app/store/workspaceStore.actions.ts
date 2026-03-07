@@ -151,6 +151,9 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         kind: "shell"
       });
 
+      // Register the terminal immediately so chat can subscribe to startup events.
+      set((state) => ({ sessionTerminalsBySessionId: { ...state.sessionTerminalsBySessionId, [session.id]: terminal.id } }));
+
       if (session.provider === "codex" || session.provider === "claude") {
         await window.api.terminals.open({
           terminalId: terminal.id,
@@ -185,7 +188,6 @@ export function createWorkspaceActions(set: WorkspaceSet, get: WorkspaceGet): Wo
         }
       }
 
-      set((state) => ({ sessionTerminalsBySessionId: { ...state.sessionTerminalsBySessionId, [session.id]: terminal.id } }));
     },
 
     closeSessionTab: async (projectId, sessionId) => {
