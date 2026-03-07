@@ -3,6 +3,8 @@ import type { BrowserWindow } from "electron";
 import { channels } from "../../shared/ipc";
 import type { SessionProvider } from "../../shared/types";
 
+type AgentInteractionMode = "default" | "plan";
+
 interface AgentSessionOpenInput {
   terminalId: string;
   sessionId: string;
@@ -12,14 +14,24 @@ interface AgentSessionOpenInput {
   mode: "create" | "restore";
 }
 
+interface CodexTurnPending {
+  resolve: (assistantText: string) => void;
+  reject: (error: Error) => void;
+  assistantBuffer: string;
+  turnId: string | null;
+}
+
 interface RunningCodexSession {
   type: "codex";
   child: ChildProcessWithoutNullStreams;
   nextId: number;
-  pending: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>;
+  pending: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }>;
   currentInput: string;
   providerThreadId: string | null;
+  activeTurnId: string | null;
+  currentTurn: CodexTurnPending | null;
   busy: boolean;
+  interactionMode: AgentInteractionMode;
 }
 
 interface RunningClaudeSession {
@@ -27,6 +39,8 @@ interface RunningClaudeSession {
   currentInput: string;
   busy: boolean;
   claudeSessionId: string | null;
+  activeChild: ChildProcessWithoutNullStreams | null;
+  interactionMode: AgentInteractionMode;
 }
 
 type RunningAgentSession = {
@@ -36,6 +50,18 @@ type RunningAgentSession = {
   cwd: string;
   cliSessionName: string;
 } & (RunningCodexSession | RunningClaudeSession);
+
+interface AgentSessionManagerHooks {
+  onSessionNameResolved?: (payload: {
+    sessionId: string;
+    cliSessionName: string;
+  }) => void;
+  onMessagePersist?: (payload: {
+    sessionId: string;
+    role: "user" | "assistant";
+    content: string;
+  }) => void;
+}
 
 function isUuidLike(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -62,16 +88,21 @@ function stripAnsi(input: string): string {
   return out;
 }
 
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export class AgentSessionManager {
   private readonly sessions = new Map<string, RunningAgentSession>();
 
-  constructor(
-    private readonly win: BrowserWindow,
-    private readonly onSessionNameResolved?: (payload: {
-      sessionId: string;
-      cliSessionName: string;
-    }) => void
-  ) {}
+  constructor(private readonly win: BrowserWindow, private readonly hooks: AgentSessionManagerHooks = {}) {}
 
   isManaged(terminalId: string): boolean {
     return this.sessions.has(terminalId);
@@ -101,14 +132,21 @@ export class AgentSessionManager {
         const prompt = session.currentInput.trim();
         this.emitData(terminalId, "\r\n");
         session.currentInput = "";
+
         if (!prompt) {
           this.emitData(terminalId, "> ");
           continue;
         }
+
+        if (this.handleCommand(session, prompt)) {
+          continue;
+        }
+
         if (session.busy) {
           this.emitData(terminalId, "⏳ Busy, wait for current turn...\r\n> ");
           continue;
         }
+
         void this.sendPrompt(session, prompt);
         continue;
       }
@@ -122,12 +160,12 @@ export class AgentSessionManager {
       }
 
       if (char === "\u0003") {
-        this.emitData(terminalId, "^C\r\n> ");
         session.currentInput = "";
+        void this.interruptSession(session);
         continue;
       }
 
-      // Ignore ANSI escape control sequences from xterm keypresses.
+      // Ignore ANSI escape starter from xterm key sequences.
       if (char === "\u001b") {
         continue;
       }
@@ -149,6 +187,10 @@ export class AgentSessionManager {
 
     if (session.type === "codex" && !session.child.killed) {
       session.child.kill();
+    }
+
+    if (session.type === "claude" && session.activeChild && !session.activeChild.killed) {
+      session.activeChild.kill("SIGINT");
     }
 
     this.sessions.delete(terminalId);
@@ -177,7 +219,10 @@ export class AgentSessionManager {
       pending: new Map(),
       currentInput: "",
       providerThreadId: null,
-      busy: false
+      activeTurnId: null,
+      currentTurn: null,
+      busy: false,
+      interactionMode: "default"
     };
 
     this.sessions.set(input.terminalId, session);
@@ -204,6 +249,16 @@ export class AgentSessionManager {
     });
 
     child.on("exit", (code, signal) => {
+      for (const pending of session.pending.values()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("Codex session closed before request completed"));
+      }
+      session.pending.clear();
+      if (session.currentTurn) {
+        session.currentTurn.reject(new Error("Codex session exited during active turn"));
+        session.currentTurn = null;
+      }
+
       this.sessions.delete(input.terminalId);
       this.win.webContents.send(channels.terminalsOnExit, {
         terminalId: input.terminalId,
@@ -245,7 +300,7 @@ export class AgentSessionManager {
       await this.codexRequest(session, "thread/start", threadParams);
     }
 
-    this.emitData(input.terminalId, "✅ Codex connected. Type a prompt and press Enter.\r\n> ");
+    this.emitData(input.terminalId, "✅ Codex connected. Type a prompt and press Enter.\r\nType /help for commands.\r\n> ");
   }
 
   private openClaude(input: AgentSessionOpenInput): void {
@@ -259,22 +314,118 @@ export class AgentSessionManager {
       currentInput: "",
       busy: false,
       claudeSessionId:
-        input.mode === "restore" && isUuidLike(input.cliSessionName) ? input.cliSessionName : null
+        input.mode === "restore" && isUuidLike(input.cliSessionName) ? input.cliSessionName : null,
+      activeChild: null,
+      interactionMode: "default"
     };
     this.sessions.set(input.terminalId, session);
     this.emitData(
       input.terminalId,
-      "🚀 Claude stream-json session ready. Type a prompt and press Enter.\r\n> "
+      "🚀 Claude stream-json session ready. Type a prompt and press Enter.\r\nType /help for commands.\r\n> "
     );
+  }
+
+  private handleCommand(session: RunningAgentSession, prompt: string): boolean {
+    if (!prompt.startsWith("/")) {
+      return false;
+    }
+
+    const [cmd] = prompt.split(/\s+/, 1);
+    switch (cmd) {
+      case "/help":
+        this.emitData(
+          session.terminalId,
+          [
+            "Commands:",
+            "  /help        Show available commands",
+            "  /plan        Switch interaction mode to plan",
+            "  /default     Switch interaction mode to default",
+            "  /interrupt   Interrupt current turn",
+            "  /status      Show session runtime status",
+            ""
+          ].join("\r\n")
+        );
+        this.emitData(session.terminalId, "> ");
+        return true;
+      case "/plan":
+        session.interactionMode = "plan";
+        this.emitData(session.terminalId, "Switched to plan mode.\r\n> ");
+        return true;
+      case "/default":
+        session.interactionMode = "default";
+        this.emitData(session.terminalId, "Switched to default mode.\r\n> ");
+        return true;
+      case "/interrupt":
+        void this.interruptSession(session);
+        return true;
+      case "/status": {
+        const providerId = session.provider === "codex" ? session.providerThreadId : session.claudeSessionId;
+        this.emitData(
+          session.terminalId,
+          `provider=${session.provider} mode=${session.interactionMode} busy=${session.busy} id=${providerId ?? "n/a"}\r\n> `
+        );
+        return true;
+      }
+      default:
+        this.emitData(session.terminalId, `Unknown command: ${cmd}\r\n> `);
+        return true;
+    }
+  }
+
+  private async interruptSession(session: RunningAgentSession): Promise<void> {
+    if (!session.busy) {
+      this.emitData(session.terminalId, "^C\r\nNo active turn.\r\n> ");
+      return;
+    }
+
+    this.emitData(session.terminalId, "^C\r\nInterrupting...\r\n");
+
+    if (session.type === "codex") {
+      if (!session.activeTurnId) {
+        this.emitData(session.terminalId, "No active turn id available yet.\r\n> ");
+        return;
+      }
+      const threadId = session.providerThreadId ?? session.cliSessionName;
+      if (!threadId) {
+        this.emitData(session.terminalId, "Missing thread id.\r\n> ");
+        return;
+      }
+      try {
+        await this.codexRequest(session, "turn/interrupt", {
+          threadId,
+          turnId: session.activeTurnId
+        });
+      } catch (error) {
+        this.emitData(
+          session.terminalId,
+          `Interrupt failed: ${error instanceof Error ? error.message : String(error)}\r\n> `
+        );
+      }
+      return;
+    }
+
+    if (session.activeChild && !session.activeChild.killed) {
+      session.activeChild.kill("SIGINT");
+      this.emitData(session.terminalId, "Claude turn interrupted.\r\n> ");
+      return;
+    }
+
+    this.emitData(session.terminalId, "No active process to interrupt.\r\n> ");
   }
 
   private async sendPrompt(session: RunningAgentSession, prompt: string): Promise<void> {
     session.busy = true;
+    this.persistMessage(session.sessionId, "user", prompt);
+
     try {
+      let assistantText = "";
       if (session.type === "codex") {
-        await this.sendCodexPrompt(session, prompt);
+        assistantText = await this.sendCodexPrompt(session, prompt);
       } else {
-        await this.sendClaudePrompt(session, prompt);
+        assistantText = await this.sendClaudePrompt(session, prompt);
+      }
+      if (assistantText.trim().length > 0) {
+        this.persistMessage(session.sessionId, "assistant", assistantText.trim());
       }
     } catch (error) {
       this.emitData(
@@ -287,13 +438,26 @@ export class AgentSessionManager {
     }
   }
 
-  private async sendCodexPrompt(session: RunningAgentSession & RunningCodexSession, prompt: string): Promise<void> {
+  private async sendCodexPrompt(session: RunningAgentSession & RunningCodexSession, prompt: string): Promise<string> {
     const threadId = session.providerThreadId ?? session.cliSessionName;
     if (!threadId || !isUuidLike(threadId)) {
       throw new Error("Codex session is missing thread id");
     }
 
-    await this.codexRequest(session, "turn/start", {
+    if (session.currentTurn) {
+      throw new Error("Codex turn already active");
+    }
+
+    const completed = new Promise<string>((resolve, reject) => {
+      session.currentTurn = {
+        resolve,
+        reject,
+        assistantBuffer: "",
+        turnId: null
+      };
+    });
+
+    const startResponse = await this.codexRequest<{ turn?: { id?: string } }>(session, "turn/start", {
       threadId,
       input: [
         {
@@ -301,22 +465,52 @@ export class AgentSessionManager {
           text: prompt,
           text_elements: []
         }
-      ]
+      ],
+      ...(session.interactionMode !== "default"
+        ? {
+            collaborationMode: {
+              mode: session.interactionMode,
+              settings: {
+                model: "gpt-5.3-codex",
+                reasoning_effort: "medium",
+                developer_instructions:
+                  session.interactionMode === "plan"
+                    ? "Plan mode: focus on planning and avoid mutating actions until the user asks to execute."
+                    : "Default mode: execute requested tasks directly."
+              }
+            }
+          }
+        : {})
     });
+
+    const responseTurnId = asString(asObject(startResponse)?.turn && asObject(startResponse)?.turn?.id);
+    if (responseTurnId) {
+      session.activeTurnId = responseTurnId;
+      if (session.currentTurn) {
+        session.currentTurn.turnId = responseTurnId;
+      }
+    }
+
+    return completed;
   }
 
-  private async sendClaudePrompt(session: RunningAgentSession & RunningClaudeSession, prompt: string): Promise<void> {
+  private async sendClaudePrompt(session: RunningAgentSession & RunningClaudeSession, prompt: string): Promise<string> {
     const args = [
       "--yes",
       "@anthropic-ai/claude-code",
       "-p",
       "--verbose",
       "--output-format",
-      "stream-json"
+      "stream-json",
+      "--include-partial-messages"
     ];
 
     if (session.claudeSessionId) {
       args.push("--resume", session.claudeSessionId);
+    }
+
+    if (session.interactionMode === "plan") {
+      args.push("--permission-mode", "plan");
     }
 
     args.push(prompt);
@@ -325,6 +519,9 @@ export class AgentSessionManager {
       cwd: session.cwd,
       stdio: ["ignore", "pipe", "pipe"]
     });
+    session.activeChild = child;
+
+    let assistantBuffer = "";
 
     await new Promise<void>((resolve, reject) => {
       let stdoutBuffer = "";
@@ -334,7 +531,10 @@ export class AgentSessionManager {
         stdoutBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          this.onClaudeLine(session, line);
+          const delta = this.onClaudeLine(session, line);
+          if (delta) {
+            assistantBuffer += delta;
+          }
         }
       });
 
@@ -345,7 +545,12 @@ export class AgentSessionManager {
         }
       });
 
-      child.on("exit", (code) => {
+      child.on("exit", (code, signal) => {
+        session.activeChild = null;
+        if (signal === "SIGINT") {
+          reject(new Error("Claude turn interrupted"));
+          return;
+        }
         if (code === 0) {
           resolve();
           return;
@@ -353,6 +558,8 @@ export class AgentSessionManager {
         reject(new Error(`Claude exited with code ${code ?? 1}`));
       });
     });
+
+    return assistantBuffer;
   }
 
   private onCodexLine(session: RunningAgentSession & RunningCodexSession, line: string): void {
@@ -364,34 +571,93 @@ export class AgentSessionManager {
       return;
     }
 
-    if (typeof parsed.id === "number") {
-      const pending = session.pending.get(parsed.id);
-      if (pending) {
-        session.pending.delete(parsed.id);
-        if (parsed.error) {
-          const message =
-            typeof parsed.error === "object" && parsed.error && "message" in parsed.error
-              ? String((parsed.error as { message?: unknown }).message ?? "Codex request failed")
-              : "Codex request failed";
-          pending.reject(new Error(message));
-          return;
-        }
-        pending.resolve(parsed.result);
+    const method = asString(parsed.method);
+    const hasRequestId = typeof parsed.id === "number" || typeof parsed.id === "string";
+
+    if (method) {
+      if (hasRequestId) {
+        this.onCodexServerRequest(session, parsed);
+      } else {
+        this.onCodexNotification(session, parsed);
       }
       return;
     }
 
-    const method = typeof parsed.method === "string" ? parsed.method : "";
-    const payload = (parsed.params ?? {}) as Record<string, unknown>;
+    if (hasRequestId) {
+      const responseId = Number(parsed.id);
+      const pending = session.pending.get(responseId);
+      if (!pending) {
+        return;
+      }
+      clearTimeout(pending.timeout);
+      session.pending.delete(responseId);
+      if (parsed.error) {
+        const message =
+          typeof parsed.error === "object" && parsed.error && "message" in parsed.error
+            ? String((parsed.error as { message?: unknown }).message ?? "Codex request failed")
+            : "Codex request failed";
+        pending.reject(new Error(message));
+        return;
+      }
+      pending.resolve(parsed.result);
+    }
+  }
+
+  private onCodexServerRequest(session: RunningAgentSession & RunningCodexSession, message: Record<string, unknown>): void {
+    const method = asString(message.method);
+    if (!method) {
+      return;
+    }
+
+    const id = message.id;
+    if (id === undefined || id === null) {
+      return;
+    }
+
+    if (
+      method === "item/commandExecution/requestApproval" ||
+      method === "item/fileChange/requestApproval" ||
+      method === "item/fileRead/requestApproval"
+    ) {
+      this.emitData(session.terminalId, `\r\n[approval] ${method} → auto-accepted\r\n`);
+      this.codexRespond(session, id, { decision: "accept" });
+      return;
+    }
+
+    if (method === "item/tool/requestUserInput") {
+      const params = asObject(message.params);
+      const questions = Array.isArray(params?.questions) ? params.questions : [];
+      const answers: Record<string, string> = {};
+      for (const q of questions) {
+        const question = asObject(q);
+        const questionId = asString(question?.id);
+        const options = Array.isArray(question?.options) ? question?.options : [];
+        const firstOption = asObject(options[0]);
+        const label = asString(firstOption?.label);
+        if (questionId && label) {
+          answers[questionId] = label;
+        }
+      }
+      this.emitData(session.terminalId, "\r\n[input] provider asked for user input; auto-answered with first option.\r\n");
+      this.codexRespond(session, id, { answers });
+      return;
+    }
+
+    this.codexRespondError(session, id, -32601, `Unsupported request: ${method}`);
+  }
+
+  private onCodexNotification(session: RunningAgentSession & RunningCodexSession, message: Record<string, unknown>): void {
+    const method = asString(message.method) ?? "";
+    const payload = asObject(message.params) ?? {};
 
     if (method === "thread/started") {
-      const thread = payload.thread as Record<string, unknown> | undefined;
-      const threadId = typeof thread?.id === "string" ? thread.id : undefined;
+      const thread = asObject(payload.thread);
+      const threadId = asString(thread?.id) ?? asString(payload.threadId);
       if (threadId) {
         session.providerThreadId = threadId;
         if (threadId !== session.cliSessionName) {
           session.cliSessionName = threadId;
-          this.onSessionNameResolved?.({
+          this.hooks.onSessionNameResolved?.({
             sessionId: session.sessionId,
             cliSessionName: threadId
           });
@@ -400,16 +666,31 @@ export class AgentSessionManager {
       return;
     }
 
+    if (method === "turn/started") {
+      const turn = asObject(payload.turn);
+      const turnId = asString(turn?.id) ?? asString(payload.turnId);
+      if (turnId) {
+        session.activeTurnId = turnId;
+        if (session.currentTurn) {
+          session.currentTurn.turnId = turnId;
+        }
+      }
+      return;
+    }
+
     if (method === "item/agentMessage/delta") {
-      const delta = typeof payload.delta === "string" ? payload.delta : "";
+      const delta = asString(payload.delta) ?? "";
       if (delta) {
+        if (session.currentTurn) {
+          session.currentTurn.assistantBuffer += delta;
+        }
         this.emitData(session.terminalId, delta);
       }
       return;
     }
 
     if (method === "item/reasoning/textDelta" || method === "item/reasoning/summaryTextDelta") {
-      const delta = typeof payload.delta === "string" ? payload.delta : "";
+      const delta = asString(payload.delta) ?? "";
       if (delta) {
         this.emitData(session.terminalId, delta);
       }
@@ -417,22 +698,45 @@ export class AgentSessionManager {
     }
 
     if (method === "turn/completed") {
+      const completedTurn = session.currentTurn;
+      session.currentTurn = null;
+      session.activeTurnId = null;
       this.emitData(session.terminalId, "\r\n✅ Turn completed");
+      if (completedTurn) {
+        completedTurn.resolve(completedTurn.assistantBuffer);
+      }
+      return;
+    }
+
+    if (method === "turn/aborted") {
+      const abortedTurn = session.currentTurn;
+      session.currentTurn = null;
+      session.activeTurnId = null;
+      this.emitData(session.terminalId, "\r\n⚠️ Turn aborted");
+      if (abortedTurn) {
+        abortedTurn.reject(new Error("Turn aborted"));
+      }
       return;
     }
 
     if (method === "error") {
-      const error = payload.error as Record<string, unknown> | undefined;
-      const message = typeof error?.message === "string" ? error.message : "Codex runtime error";
-      this.emitData(session.terminalId, `\r\n❌ ${message}`);
+      const error = asObject(payload.error);
+      const messageText = asString(error?.message) ?? "Codex runtime error";
+      this.emitData(session.terminalId, `\r\n❌ ${messageText}`);
+      if (session.currentTurn) {
+        const activeTurn = session.currentTurn;
+        session.currentTurn = null;
+        session.activeTurnId = null;
+        activeTurn.reject(new Error(messageText));
+      }
       return;
     }
   }
 
-  private onClaudeLine(session: RunningAgentSession & RunningClaudeSession, line: string): void {
+  private onClaudeLine(session: RunningAgentSession & RunningClaudeSession, line: string): string {
     const trimmed = line.trim();
     if (!trimmed) {
-      return;
+      return "";
     }
 
     let parsed: Record<string, unknown>;
@@ -440,44 +744,49 @@ export class AgentSessionManager {
       parsed = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
       this.emitData(session.terminalId, `${trimmed}\r\n`);
-      return;
+      return "";
     }
 
-    const type = typeof parsed.type === "string" ? parsed.type : "";
+    const type = asString(parsed.type) ?? "";
     if (type === "system" && parsed.subtype === "init") {
-      const sessionId = typeof parsed.session_id === "string" ? parsed.session_id : null;
+      const sessionId = asString(parsed.session_id) ?? null;
       if (sessionId && sessionId !== session.cliSessionName) {
         session.claudeSessionId = sessionId;
         session.cliSessionName = sessionId;
-        this.onSessionNameResolved?.({
+        this.hooks.onSessionNameResolved?.({
           sessionId: session.sessionId,
           cliSessionName: sessionId
         });
       }
-      return;
+      return "";
     }
 
     if (type === "assistant") {
-      const message = parsed.message as { content?: Array<{ type?: string; text?: string }> } | undefined;
+      const message = asObject(parsed.message);
       const content = Array.isArray(message?.content) ? message.content : [];
       const text = content
-        .filter((part) => part && part.type === "text" && typeof part.text === "string")
-        .map((part) => part.text)
+        .map((part) => asObject(part))
+        .filter((part): part is Record<string, unknown> => part !== undefined)
+        .filter((part) => asString(part.type) === "text")
+        .map((part) => asString(part.text) ?? "")
         .join("");
       if (text) {
-        this.emitData(session.terminalId, `${text}`);
+        this.emitData(session.terminalId, text);
+        return text;
       }
-      return;
+      return "";
     }
 
     if (type === "result") {
       const isError = Boolean(parsed.is_error);
       if (isError) {
-        const result = typeof parsed.result === "string" ? parsed.result : "Claude turn failed";
+        const result = asString(parsed.result) ?? "Claude turn failed";
         this.emitData(session.terminalId, `\r\n⚠️ ${result}`);
       }
-      return;
+      return "";
     }
+
+    return "";
   }
 
   private codexNotify(
@@ -497,6 +806,44 @@ export class AgentSessionManager {
     );
   }
 
+  private codexRespond(
+    session: RunningAgentSession & RunningCodexSession,
+    id: string | number,
+    result: Record<string, unknown>
+  ): void {
+    if (!session.child.stdin.writable) {
+      return;
+    }
+
+    session.child.stdin.write(
+      `${JSON.stringify({
+        id,
+        result
+      })}\n`
+    );
+  }
+
+  private codexRespondError(
+    session: RunningAgentSession & RunningCodexSession,
+    id: string | number,
+    code: number,
+    message: string
+  ): void {
+    if (!session.child.stdin.writable) {
+      return;
+    }
+
+    session.child.stdin.write(
+      `${JSON.stringify({
+        id,
+        error: {
+          code,
+          message
+        }
+      })}\n`
+    );
+  }
+
   private codexRequest<T>(
     session: RunningAgentSession & RunningCodexSession,
     method: string,
@@ -510,9 +857,15 @@ export class AgentSessionManager {
     }
 
     return new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        session.pending.delete(id);
+        reject(new Error(`Timed out waiting for Codex response to ${method}`));
+      }, 30_000);
+
       session.pending.set(id, {
         resolve: (value) => resolve(value as T),
-        reject
+        reject,
+        timeout
       });
 
       session.child.stdin.write(
@@ -522,6 +875,17 @@ export class AgentSessionManager {
           params
         })}\n`
       );
+    });
+  }
+
+  private persistMessage(sessionId: string, role: "user" | "assistant", content: string): void {
+    if (!content.trim()) {
+      return;
+    }
+    this.hooks.onMessagePersist?.({
+      sessionId,
+      role,
+      content
     });
   }
 

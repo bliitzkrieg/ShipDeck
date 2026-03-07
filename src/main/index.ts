@@ -173,11 +173,20 @@ function registerIpc(win: BrowserWindow): void {
       // Ignore navigation errors; renderer still receives event updates.
     });
   });
-  const agentSessions = new AgentSessionManager(win, ({ sessionId, cliSessionName }) => {
-    try {
-      repo.updateSessionCliSessionName({ sessionId, cliSessionName });
-    } catch (error) {
-      console.warn("Failed to persist provider session id:", error);
+  const agentSessions = new AgentSessionManager(win, {
+    onSessionNameResolved: ({ sessionId, cliSessionName }) => {
+      try {
+        repo.updateSessionCliSessionName({ sessionId, cliSessionName });
+      } catch (error) {
+        console.warn("Failed to persist provider session id:", error);
+      }
+    },
+    onMessagePersist: ({ sessionId, role, content }) => {
+      try {
+        repo.createMessage({ sessionId, role, content });
+      } catch (error) {
+        console.warn("Failed to persist provider message:", error);
+      }
     }
   });
 
