@@ -74,36 +74,6 @@ export const SessionChatPanel = memo(function SessionChatPanel({
 
   return (
     <div className="chat-panel">
-      <div className="chat-floating-status">
-        {!state.isReady ? (
-          <span className="chat-status connecting">
-            <Loader2 size={12} className="spin" />
-            Connecting…
-          </span>
-        ) : state.isBusy ? (
-          <span className="chat-status busy">
-            <Loader2 size={12} className="spin" />
-            Thinking…
-          </span>
-        ) : (
-          <span className="chat-status ready">
-            <span className="chat-status-dot" />
-            Ready
-          </span>
-        )}
-        {state.isBusy ? (
-          <button
-            type="button"
-            className="chat-interrupt-btn"
-            onClick={() => void actions.interrupt()}
-            title="Interrupt"
-          >
-            <Square size={12} />
-            Stop
-          </button>
-        ) : null}
-      </div>
-
       {/* Messages */}
       <div
         className="chat-messages"
@@ -168,16 +138,47 @@ export const SessionChatPanel = memo(function SessionChatPanel({
 
       {/* Composer */}
       <div className="chat-composer">
-        <textarea
-          ref={textareaRef}
-          className="chat-composer-input"
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder={state.isReady ? "Message… (Enter to send, Shift+Enter for newline)" : "Connecting…"}
-          disabled={!state.isReady}
-          rows={1}
-        />
+        <div className="chat-composer-input-wrap">
+          <textarea
+            ref={textareaRef}
+            className="chat-composer-input"
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder={state.isReady ? "Message… (Enter to send, Shift+Enter for newline)" : "Connecting…"}
+            disabled={!state.isReady}
+            rows={1}
+          />
+          <div className="chat-composer-status" aria-live="polite">
+            {!state.isReady ? (
+              <span className="chat-status connecting">
+                <Loader2 size={12} className="spin" />
+                Connecting…
+              </span>
+            ) : state.isBusy ? (
+              <span className="chat-status busy">
+                <Loader2 size={12} className="spin" />
+                Thinking…
+              </span>
+            ) : (
+              <span className="chat-status ready">
+                <span className="chat-status-dot" />
+                Ready
+              </span>
+            )}
+            {state.isBusy ? (
+              <button
+                type="button"
+                className="chat-interrupt-btn"
+                onClick={() => void actions.interrupt()}
+                title="Interrupt"
+              >
+                <Square size={12} />
+                Stop
+              </button>
+            ) : null}
+          </div>
+        </div>
         <button
           type="button"
           className="chat-send-btn"
